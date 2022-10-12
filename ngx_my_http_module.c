@@ -165,14 +165,10 @@ ngx_my_http_close_connection(ngx_connection_t *c)
 
 static void ngx_my_http_wait_request_handler(ngx_event_t *rev)
 {
-    printf("entering the wait request handler: \n");
-    
-    // u_char                    *p;
     size_t                     size;
     ssize_t                    n;
     ngx_buf_t                 *b;
     ngx_connection_t          *c;
-    // ngx_http_connection_t     *hc;
 
     c = rev->data;
 
@@ -189,14 +185,11 @@ static void ngx_my_http_wait_request_handler(ngx_event_t *rev)
         return;
     }
 
-    // hc = c->data;
-
     size = 1024;
 
     b = c->buffer;
 
     if (b == NULL) {
-        printf("case 1\n");
         b = ngx_create_temp_buf(c->pool, size);
         if (b == NULL) {
             ngx_my_http_close_connection(c);
@@ -206,7 +199,6 @@ static void ngx_my_http_wait_request_handler(ngx_event_t *rev)
         c->buffer = b;
 
     } else if (b->start == NULL) {
-        printf("case 2\n");
         b->start = ngx_palloc(c->pool, size);
         if (b->start == NULL) {
             ngx_my_http_close_connection(c);
@@ -221,7 +213,6 @@ static void ngx_my_http_wait_request_handler(ngx_event_t *rev)
     n = c->recv(c, b->last, size);
 
     if (n == NGX_AGAIN) {
-
         if (!rev->timer_set) {
             ngx_add_timer(rev, 60 * 1000);
             ngx_reusable_connection(c, 1);
@@ -260,8 +251,6 @@ static void ngx_my_http_wait_request_handler(ngx_event_t *rev)
     c->log->action = "reading client request line";
 
     ngx_reusable_connection(c, 0);
-
-    printf("request string: %s\n", (char *) rev->data);
 }
 
 void ngx_my_http_empty_handler(ngx_event_t *wev)
@@ -279,11 +268,7 @@ ngx_http_log_error(ngx_log_t *log, u_char *buf, size_t len)
 
 void ngx_my_http_init_connection(ngx_connection_t *c)
 {
-    printf("initializing connection\n");
-    // ngx_uint_t                 i;
     ngx_event_t               *rev;
-    // struct sockaddr_in        *sin;
-    // ngx_http_port_t           *port;
 
     c->log->connection = c->number;
     c->log->handler = ngx_http_log_error;
@@ -368,59 +353,3 @@ u_char* ngx_my_http_accept_log_error(ngx_log_t *log, u_char *buf, size_t len)
     return ngx_snprintf(buf, len, " while accepting new connection on %V",
                         log->data);
 }
-
-// static ssize_t
-// ngx_my_http_read_request_header(ngx_http_request_t *r)
-// {
-//     ssize_t                    n;
-//     ngx_event_t               *rev;
-//     ngx_connection_t          *c;
-//     ngx_http_core_srv_conf_t  *cscf;
-
-//     c = r->connection;
-//     rev = c->read;
-
-//     n = r->header_in->last - r->header_in->pos;
-
-//     if (n > 0) {
-//         return n;
-//     }
-
-//     if (rev->ready) {
-//         n = c->recv(c, r->header_in->last,
-//                     r->header_in->end - r->header_in->last);
-//     } else {
-//         n = NGX_AGAIN;
-//     }
-
-//     if (n == NGX_AGAIN) {
-//         if (!rev->timer_set) {
-//             cscf = ngx_http_get_module_srv_conf(r, ngx_http_core_module);
-//             ngx_add_timer(rev, cscf->client_header_timeout);
-//         }
-
-//         if (ngx_handle_read_event(rev, 0) != NGX_OK) {
-//             // ngx_http_close_request(r, NGX_HTTP_INTERNAL_SERVER_ERROR);
-//             return NGX_ERROR;
-//         }
-
-//         return NGX_AGAIN;
-//     }
-
-//     if (n == 0) {
-//         ngx_log_error(NGX_LOG_INFO, c->log, 0,
-//                       "client prematurely closed connection");
-//     }
-
-//     if (n == 0 || n == NGX_ERROR) {
-//         c->error = 1;
-//         c->log->action = "reading client request headers";
-
-//         // ngx_http_finalize_request(r, NGX_HTTP_BAD_REQUEST);
-//         return NGX_ERROR;
-//     }
-
-//     r->header_in->last += n;
-
-//     return n;
-// }
