@@ -10,7 +10,7 @@
 
 #include <stdio.h>
 
-ngx_uint_t ngx_my_http_max_module;
+ngx_uint_t presentation_max_module_count;
 
 static char* ngx_my_http_block(ngx_conf_t *configuration, ngx_command_t *command, void *base_configuration);
 static ngx_int_t ngx_my_http_init_listening(ngx_conf_t *cf, ngx_int_t port);
@@ -68,17 +68,17 @@ static char* ngx_my_http_block(ngx_conf_t *configuration, ngx_command_t *command
     *(ngx_my_http_configuration_context_t **) base_configuration = context;
 
     /* count all modules and set up their indices */
-    ngx_my_http_max_module = 0;
+    presentation_max_module_count = 0;
     for (m = 0; ngx_modules[m]; m++) {
         if (ngx_modules[m]->type != NGX_MY_HTTP_MODULE) {
             continue;
         }
 
-        ngx_modules[m]->ctx_index = ngx_my_http_max_module++;
+        ngx_modules[m]->ctx_index = presentation_max_module_count++;
     }
 
     /* the my_http main context */
-    context->main_configuration = ngx_pcalloc(configuration->pool, ngx_my_http_max_module * sizeof(void*));
+    context->main_configuration = ngx_pcalloc(configuration->pool, presentation_max_module_count * sizeof(void*));
     if (context->main_configuration == NULL) {
         return NGX_CONF_ERROR;
     }
