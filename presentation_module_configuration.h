@@ -8,8 +8,6 @@
 
 // macros
 
-// keywords
-#define PRESENTATION_BLOCK_KEYWORD "lay6"
 
 // bitmask constants
 #define PRESENTATION_MODULE                      0x3659414C /* "LAY6" */
@@ -49,6 +47,8 @@ typedef struct {
     ngx_uint_t                 naddrs;
 } presentation_port_t;
 
-extern ngx_module_t presentation_module;
+// functions 
+
+static char* presentation_block(ngx_conf_t *configuration, ngx_command_t *command, void *base_configuration);
 
 #endif

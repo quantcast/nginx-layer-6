@@ -35,7 +35,7 @@ static ngx_core_module_t  ngx_my_http_module_context = {
     NULL
 };
 
-ngx_module_t  ngx_my_http_module = {
+ngx_module_t ngx_my_http_module = {
     NGX_MODULE_V1,
     &ngx_my_http_module_context,           /* module context */
     ngx_my_http_commands,                  /* module directives */
