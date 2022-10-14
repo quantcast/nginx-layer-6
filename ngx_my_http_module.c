@@ -14,8 +14,8 @@ ngx_uint_t presentation_max_module_count;
 
 static char* ngx_my_http_block(ngx_conf_t *configuration, ngx_command_t *command, void *base_configuration);
 static ngx_int_t ngx_my_http_init_listening(ngx_conf_t *cf, ngx_int_t port);
-void ngx_my_http_init_connection(ngx_connection_t *c);
-u_char* ngx_my_http_accept_log_error(ngx_log_t *log, u_char *buf, size_t len);
+void presentation_http_server_init_connection(ngx_connection_t *c);
+u_char* presentation_http_server_accept_log_error(ngx_log_t *log, u_char *buf, size_t len);
 
 static ngx_command_t ngx_my_http_commands[] = {
   {
@@ -266,7 +266,7 @@ ngx_http_log_error(ngx_log_t *log, u_char *buf, size_t len)
    return NGX_OK;
 }
 
-void ngx_my_http_init_connection(ngx_connection_t *c)
+void presentation_http_server_init_connection(ngx_connection_t *c)
 {
     ngx_event_t               *rev;
 
@@ -331,12 +331,12 @@ ngx_my_http_init_listening(ngx_conf_t *cf, ngx_int_t port)
 
     ls->addr_ntop = 1;
 
-    ls->handler = ngx_my_http_init_connection;
+    ls->handler = presentation_http_server_init_connection;
     ls->pool_size = 512;
 
     ls->logp = cf->log;
     ls->log.data = &ls->addr_text;
-    ls->log.handler = ngx_my_http_accept_log_error;
+    ls->log.handler = presentation_http_server_accept_log_error;
 
     ls->backlog = -1;
     ls->rcvbuf = SO_RCVBUF;
@@ -347,7 +347,7 @@ ngx_my_http_init_listening(ngx_conf_t *cf, ngx_int_t port)
     return NGX_OK;
 }
 
-u_char* ngx_my_http_accept_log_error(ngx_log_t *log, u_char *buf, size_t len)
+u_char* presentation_http_server_accept_log_error(ngx_log_t *log, u_char *buf, size_t len)
 {
     printf("accepting connection\n");
     return ngx_snprintf(buf, len, " while accepting new connection on %V",

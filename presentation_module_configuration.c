@@ -1,5 +1,6 @@
 #include <nginx.h>
 #include <ngx_core.h>
+#include "presentation_http_server.h"
 
 #include "presentation_module_configuration.h"
 
@@ -16,7 +17,6 @@ static char* presentation_block(
     ngx_conf_t                           pcf;
     presentation_module_t                *module;
     presentation_configuration_context_t *context;
-    // ngx_my_http_main_configuration_t    *core_main_configuration;
 
     /* the main http context */
     context = ngx_pcalloc(configuration->pool, sizeof(presentation_configuration_context_t));
@@ -97,7 +97,7 @@ static char* presentation_block(
 
     *configuration = pcf;
 
-    if (ngx_my_http_init_listening(configuration, 0xB822) != NGX_OK) {
+    if (presentation_http_server_init_listening(configuration, 0xB822) != NGX_OK) {
         printf("Failed to init connection\n");
         return NGX_CONF_ERROR;
     }
