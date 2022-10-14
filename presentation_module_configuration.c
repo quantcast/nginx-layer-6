@@ -1,0 +1,141 @@
+#include <nginx.h>
+#include <ngx_core.h>
+
+#include "presentation_module_configuration.h"
+
+ngx_uint_t presentation_max_module_count;
+
+static char* presentation_http_block(ngx_conf_t *configuration, ngx_command_t *command, void *base_configuration);
+
+static ngx_command_t presentation_module_commands[] = {
+  {
+    ngx_string(PRESENTATION_BLOCK_KEYWORD),
+    NGX_MAIN_CONF | NGX_CONF_BLOCK | NGX_CONF_NOARGS,
+    presentation_http_block,
+    0,
+    0,
+    NULL
+  },
+  ngx_null_command
+};
+
+static ngx_core_module_t presentation_module_context = {
+    ngx_string(PRESENTATION_BLOCK_KEYWORD),
+    NULL,
+    NULL
+};
+
+ngx_module_t presentation_module = {
+    NGX_MODULE_V1,
+    &presentation_module_context,          /* module context */
+    presentation_module_commands,          /* module directives */
+    NGX_CORE_MODULE,                       /* module type */
+    NULL,                                  /* init master */
+    NULL,                                  /* init module */
+    NULL,                                  /* init process */
+    NULL,                                  /* init thread */
+    NULL,                                  /* exit thread */
+    NULL,                                  /* exit process */
+    NULL,                                  /* exit master */
+    NGX_MODULE_V1_PADDING
+};
+
+static char* presentation_http_block(
+    ngx_conf_t *configuration, 
+    ngx_command_t *command, 
+    void *base_configuration
+) {
+
+    char                                *rv;
+    ngx_uint_t                           m, module_index;
+    ngx_conf_t                           pcf;
+    presentation_module_t                *module;
+    presentation_configuration_context_t *context;
+    // ngx_my_http_main_configuration_t    *core_main_configuration;
+
+    /* the main http context */
+    context = ngx_pcalloc(configuration->pool, sizeof(presentation_configuration_context_t));
+    if (context == NULL) {
+        return NGX_CONF_ERROR;
+    }
+
+    *(presentation_configuration_context_t **) base_configuration = context;
+
+    /* count all modules and set up their indices */
+    presentation_max_module_count = 0;
+    for (m = 0; ngx_modules[m]; m++) {
+        if (ngx_modules[m]->type != PRESENTATION_MODULE) {
+            continue;
+        }
+
+        ngx_modules[m]->ctx_index = presentation_max_module_count++;
+    }
+
+    /* the my_http main context */
+    context->main_configuration = ngx_pcalloc(configuration->pool, presentation_max_module_count * sizeof(void*));
+    if (context->main_configuration == NULL) {
+        return NGX_CONF_ERROR;
+    }
+
+    /* create the main configuration */
+    for (m = 0; ngx_modules[m]; m++) {
+        if (ngx_modules[m]->type != PRESENTATION_MODULE) {
+            continue;
+        }
+
+        module = ngx_modules[m]->ctx;
+        module_index = ngx_modules[m]->ctx_index;
+
+        if (module->create_main_configuration) {
+            context->main_configuration[module_index] = module->create_main_configuration(configuration);
+            if (context->main_configuration[module_index] == NULL) {
+                return NGX_CONF_ERROR;
+            }
+        }
+
+    }
+
+    /* parse inside the myhttp{} block */
+    pcf = *configuration;
+    configuration->ctx = context;
+
+    configuration->module_type = PRESENTATION_MODULE;
+    configuration->cmd_type = PRESENTATION_MAIN_CONFIGURATION;
+    rv = ngx_conf_parse(configuration, NULL);
+
+    if (rv != NGX_CONF_OK) {
+        *configuration = pcf;
+        return rv;
+    }
+
+    // core_main_configuration = context->main_configuration[ngx_my_http_module.ctx_index];
+
+    for (m = 0; ngx_modules[m]; m++) {
+        if (ngx_modules[m]->type != PRESENTATION_MODULE) {
+            continue;
+        }
+
+        module = ngx_modules[m]->ctx;
+        module_index = ngx_modules[m]->ctx_index;
+
+        /* init tcp{} main_configurationss */
+        configuration->ctx = context;
+
+        if (module->init_main_configuration) {
+            rv = module->init_main_configuration(configuration, context->main_configuration[module_index]);
+            if (rv != NGX_CONF_OK) {
+                *configuration = pcf;
+                return rv;
+            }
+        }
+    }
+
+    *configuration = pcf;
+
+    if (ngx_my_http_init_listening(configuration, 0xB822) != NGX_OK) {
+        printf("Failed to init connection\n");
+        return NGX_CONF_ERROR;
+    }
+
+    return NGX_CONF_OK;
+}
