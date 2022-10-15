@@ -5,14 +5,16 @@
 #include <ngx_http.h>
 #include <string.h>
 #include <ngx_socket.h>
+#include <stdio.h>
 
-#include <presentation_http_server.h>
+#include "presentation_http_server.h"
 
 void presentation_http_server_close_connection(ngx_connection_t *c);
-static void presentation_http_server_wait_request_handler(ngx_event_t *rev);
+void presentation_http_server_wait_request_handler(ngx_event_t *rev);
 void presentation_http_server_empty_handler(ngx_event_t *wev);
 u_char* presentation_http_server_log_error(ngx_log_t *log, u_char *buf, size_t len);
 void presentation_http_server_init_connection(ngx_connection_t *c);
+u_char* presentation_http_server_accept_log_error(ngx_log_t *log, u_char *buf, size_t len);
 
 void presentation_http_server_close_connection(ngx_connection_t *c)
 {
@@ -30,7 +32,7 @@ void presentation_http_server_close_connection(ngx_connection_t *c)
     ngx_destroy_pool(pool);
 }
 
-static void presentation_http_server_wait_request_handler(ngx_event_t *rev)
+void presentation_http_server_wait_request_handler(ngx_event_t *rev)
 {
     size_t                     size;
     ssize_t                    n;
@@ -127,7 +129,7 @@ void presentation_http_server_empty_handler(ngx_event_t *wev)
     return;
 }
 
-static u_char* presentation_http_server_log_error(ngx_log_t *log, u_char *buf, size_t len)
+u_char* presentation_http_server_log_error(ngx_log_t *log, u_char *buf, size_t len)
 {
    return NGX_OK;
 }
@@ -169,8 +171,7 @@ void presentation_http_server_init_connection(ngx_connection_t *c)
     }
 }
 
-static ngx_int_t
-presentation_http_server_init_listening(ngx_conf_t *cf, ngx_int_t port)
+ngx_int_t presentation_http_server_init_listening(ngx_conf_t *cf, ngx_int_t port)
 {
     ngx_listening_t *ls;
     struct sockaddr_in *socket_address;

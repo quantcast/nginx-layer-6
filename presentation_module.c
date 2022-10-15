@@ -1,10 +1,10 @@
 #include <nginx.h>
 #include <ngx_core.h>
-#include "presentation_module_configuration.h";
+#include "presentation_module_configuration.h"
 
-#include "presentation_module.h";
+#include "presentation_module.h"
 
-static ngx_command_t presentation_module_commands[] = {
+ngx_command_t presentation_module_commands[] = {
   {
     ngx_string(PRESENTATION_BLOCK_KEYWORD),
     NGX_MAIN_CONF | NGX_CONF_BLOCK | NGX_CONF_NOARGS,
@@ -16,7 +16,7 @@ static ngx_command_t presentation_module_commands[] = {
   ngx_null_command
 };
 
-static ngx_core_module_t presentation_module_context = {
+ngx_core_module_t presentation_module_context = {
     ngx_string(PRESENTATION_BLOCK_KEYWORD),
     NULL,
     NULL

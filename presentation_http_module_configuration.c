@@ -3,7 +3,7 @@
 #include "presentation_module.h"
 #include "presentation_module_configuration.h"
 
-static ngx_int_t presentation_http_block_initialization(ngx_conf_t *configuration) {
+ngx_int_t presentation_http_block_initialization(ngx_conf_t *configuration) {
     // associating configuration with module
     presentation_main_configuration_t* http_main_configuration =
         presentation_conf_get_module_main_conf(
@@ -16,7 +16,7 @@ static ngx_int_t presentation_http_block_initialization(ngx_conf_t *configuratio
     return NGX_OK;
 }
 
-static void* presentation_http_block_create_main_configuration(ngx_conf_t* configuration) {
+void* presentation_http_block_create_main_configuration(ngx_conf_t* configuration) {
     presentation_main_configuration_t* my_http_configuration;
     my_http_configuration = ngx_pcalloc(
         configuration->pool, sizeof(presentation_main_configuration_t)

@@ -49,6 +49,6 @@ typedef struct {
 
 // functions 
 
-static char* presentation_block(ngx_conf_t *configuration, ngx_command_t *command, void *base_configuration);
+char* presentation_block(ngx_conf_t *configuration, ngx_command_t *command, void *base_configuration);
 
 #endif

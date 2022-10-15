@@ -3,4 +3,6 @@
 
 #define PORT_KEYWORD "listen"
 
+extern ngx_module_t presentation_http_module;
+
 #endif

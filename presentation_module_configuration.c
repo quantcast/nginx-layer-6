@@ -6,7 +6,7 @@
 
 ngx_uint_t presentation_max_module_count;
 
-static char* presentation_block(
+char* presentation_block(
     ngx_conf_t *configuration, 
     ngx_command_t *command, 
     void *base_configuration
