@@ -1,5 +1,6 @@
 #include <nginx.h>
 #include <ngx_core.h>
+#include <ngx_string.h>
 #include <ngx_event.h>
 
 void presentation_http_request_close_connection(ngx_connection_t *c);
@@ -108,4 +109,11 @@ void presentation_http_request_close_connection(ngx_connection_t *c)
     ngx_close_connection(c);
 
     ngx_destroy_pool(pool);
+}
+
+// TODO: this function should parse out the request body from the request buffer
+// not sure if these are all the necessary parameters
+ngx_str_t presentation_parse_http_request_body(ngx_buf_t request_buffer) {
+    ngx_str_t str = ngx_string("");
+    return str;
 }
