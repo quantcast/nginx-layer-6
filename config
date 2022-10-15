@@ -5,10 +5,12 @@ NGX_ADDON_DEPS="$NGX_ADDON_DEPS \
     $ngx_addon_dir/presentation_http_module.h \
     $ngx_addon_dir/presentation_http_module_configuration.h \
     $ngx_addon_dir/presentation_http_server.h \
-    $ngx_addon_dir/presentation_module_configuration.h"
+    $ngx_addon_dir/presentation_module_configuration.h \
+    $ngx_addon_dir/presentation_http_request.h"
 NGX_ADDON_SRCS="$NGX_ADDON_SRCS \
     $ngx_addon_dir/presentation_module.c \
     $ngx_addon_dir/presentation_http_module.c \
     $ngx_addon_dir/presentation_http_module_configuration.c \
     $ngx_addon_dir/presentation_http_server.c \
-    $ngx_addon_dir/presentation_module_configuration.c"
+    $ngx_addon_dir/presentation_module_configuration.c \
+    $ngx_addon_dir/presentation_http_request.c"
