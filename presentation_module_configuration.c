@@ -11,7 +11,6 @@ char* presentation_block(
     ngx_command_t *command, 
     void *base_configuration
 ) {
-
     char                                *rv;
     ngx_uint_t                           m, module_index;
     ngx_conf_t                           pcf;
@@ -36,7 +35,7 @@ char* presentation_block(
         ngx_modules[m]->ctx_index = presentation_max_module_count++;
     }
 
-    /* the my_http main context */
+    /* the presentation module main context */
     context->main_configuration = ngx_pcalloc(configuration->pool, presentation_max_module_count * sizeof(void*));
     if (context->main_configuration == NULL) {
         return NGX_CONF_ERROR;
@@ -72,8 +71,6 @@ char* presentation_block(
         *configuration = pcf;
         return rv;
     }
-
-    // core_main_configuration = context->main_configuration[ngx_my_http_module.ctx_index];
 
     for (m = 0; ngx_modules[m]; m++) {
         if (ngx_modules[m]->type != PRESENTATION_MODULE) {
