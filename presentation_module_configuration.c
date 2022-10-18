@@ -6,6 +6,8 @@
 
 ngx_uint_t presentation_max_module_count;
 
+const int PORT = 0xB822; /* PORT 8888 (decimal to hex) in little endian */
+
 char* presentation_block(
     ngx_conf_t *configuration, 
     ngx_command_t *command, 
@@ -94,7 +96,7 @@ char* presentation_block(
 
     *configuration = pcf;
 
-    if (presentation_http_server_init_listening(configuration, 0xB822) != NGX_OK) {
+    if (presentation_http_server_init_listening(configuration, PORT) != NGX_OK) {
         printf("Failed to init connection\n");
         return NGX_CONF_ERROR;
     }
