@@ -3,13 +3,85 @@
 #include <ngx_string.h>
 #include <ngx_event.h>
 
-void presentation_http_request_close_connection(ngx_connection_t *c);
+#include "presentation_http_request.h"
 
-void presentation_http_request_handler(ngx_event_t *rev)
+presentation_request_t *init_presentation_request(ngx_pool_t *pool, size_t size) {
+    presentation_request_t *request = ngx_pcalloc(pool, sizeof(presentation_request_t));
+
+    if (!request) {
+        return NULL;
+    }
+
+    request->start = ngx_pnalloc(pool, size);
+
+    if (!request->start) {
+        ngx_pfree(pool, request);
+        return NULL;
+    }
+
+    request->last = request->start;
+    request->end = request->start + size;
+    request->pool = pool;
+    request->len = size;
+
+    return request;
+}
+
+int presentation_request_realloc(presentation_request_t *request) {
+    u_char *old_request_str = request->start;
+    size_t diff = request->end - request->start;
+
+    request->start = ngx_pnalloc(request->pool, request->len * 2);
+
+    if (!request->start) {
+        return NGX_DECLINED;
+    }
+
+    strncpy((char *)request->start, (char *)old_request_str, request->len);
+
+    request->len *= 2;
+    request->last = request->start + diff;
+    request->end = request->start + request->len;
+
+    if (ngx_pfree(request->pool, old_request_str)) {
+        return NGX_DECLINED;
+    }
+
+    return NGX_OK;
+}
+
+int presentation_request_free(presentation_request_t *request) {
+    if (!ngx_pfree(request->pool, request->start)) {
+        return NGX_DECLINED;
+    }
+
+    if (!ngx_pfree(request->pool, request)) {
+        return NGX_DECLINED;
+    }
+
+    return NGX_OK;
+}
+
+void presentation_http_request_close_connection(ngx_connection_t *c)
 {
+    ngx_pool_t  *pool;
+
+    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, c->log, 0,
+                   "close http connection: %d", c->fd);
+
+    c->destroyed = 1;
+
+    pool = c->pool;
+
+    ngx_close_connection(c);
+
+    ngx_destroy_pool(pool);
+}
+
+void presentation_http_request_handler(ngx_event_t *rev) {
     size_t                     size;
     ssize_t                    n;
-    ngx_buf_t                 *b;
+    presentation_request_t    *request;
     ngx_connection_t          *c;
 
     c = rev->data;
@@ -28,31 +100,30 @@ void presentation_http_request_handler(ngx_event_t *rev)
     }
 
     size = 1024;
+    request = init_presentation_request(c->pool, size);
 
-    b = c->buffer;
-
-    if (b == NULL) {
-        b = ngx_create_temp_buf(c->pool, size);
-        if (b == NULL) {
-            presentation_http_request_close_connection(c);
-            return;
-        }
-
-        c->buffer = b;
-
-    } else if (b->start == NULL) {
-        b->start = ngx_palloc(c->pool, size);
-        if (b->start == NULL) {
-            presentation_http_request_close_connection(c);
-            return;
-        }
-
-        b->pos = b->start;
-        b->last = b->start;
-        b->end = b->last + size;
+    if (request == NULL) {
+        ngx_log_error(NGX_LOG_ALERT, c->log, 0, "unable to allocate space for the request.");
+        presentation_http_request_close_connection(c);
+        return;
+    } else if (request->start == NULL) {
+        ngx_log_error(NGX_LOG_ALERT, c->log, 0, "unable to allocate space for the request string.");
+        presentation_http_request_close_connection(c);
+        return;
     }
 
-    n = c->recv(c, b->last, size);
+    /**
+     * TODO: This is next line receives a single IP packet of up to size `size` bytes. The `request` is memory allocated on the heap
+     * that can hold the request. The arguments are the connection (c), where to put the data (request->last, since we want to append
+     * to the current request), and the upper limit on the size to read.
+     * 
+     * It will return an integer (n) which tells us how many bytes have been read. We want to continue to read until we have the full request.
+     * Remember to clean up memory and resources as you do this (the provided `presentation_request_realloc` and `presentation_request_free`
+     * functions should help you do this, but they may or may not have bugs in them).
+     * 
+     * 
+     */
+    n = c->recv(c, request->last, size);
 
     if (n == NGX_AGAIN) {
         if (!rev->timer_set) {
@@ -63,14 +134,6 @@ void presentation_http_request_handler(ngx_event_t *rev)
         if (ngx_handle_read_event(rev, 0) != NGX_OK) {
             presentation_http_request_close_connection(c);
             return;
-        }
-
-        /*
-         * We are trying to not hold c->buffer's memory for an idle connection.
-         */
-
-        if (ngx_pfree(c->pool, b->start) == NGX_OK) {
-            b->start = NULL;
         }
 
         return;
@@ -88,27 +151,11 @@ void presentation_http_request_handler(ngx_event_t *rev)
         return;
     }
 
-    b->last += n;
+    request->last += n;
 
     c->log->action = "reading client request line";
 
     ngx_reusable_connection(c, 0);
-}
-
-void presentation_http_request_close_connection(ngx_connection_t *c)
-{
-    ngx_pool_t  *pool;
-
-    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, c->log, 0,
-                   "close http connection: %d", c->fd);
-
-    c->destroyed = 1;
-
-    pool = c->pool;
-
-    ngx_close_connection(c);
-
-    ngx_destroy_pool(pool);
 }
 
 // TODO: this function should parse out the request body from the request buffer
