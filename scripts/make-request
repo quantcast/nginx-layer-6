@@ -1,0 +1,63 @@
+# Simple script to make an HTTP request using curl with predefined data
+PORT=
+HOST=
+TEST_FILE=
+DATA=
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -p|--port)
+            shift
+            PORT=$1
+            shift
+            ;;
+        -h|--host)
+            shift
+            HOST=$1
+            shift
+            ;;
+        -f|--file)
+            shift
+            TEST_FILE=$1
+            shift
+            ;;
+        -d|--data)
+            shift
+            DATA=$1
+            shift
+            ;;
+        -h|--help)
+            echo 'Usage: ./make-request [-p] [-h] [-fd]'
+            echo "    --port (-p) - The port to send the request to"
+            echo "    --host (-h) - The host address to hit with a request"
+            echo "    --file (-f) - The test file to use as the body of the request"
+            echo "    --data (-d) - The data to use as the body of the request (defaults to data if both -d and -f are provided)"
+            shift
+            exit 0
+            ;;
+        -*|--*)
+            echo "Unknown option $1"
+            echo 'Usage: ./make-request [options]'
+            echo "    --port (-p) - The port to send the request to"
+            echo "    --host (-h) - The host address to hit with a request"
+            echo "    --file (-f) - The test file to use as the body of the request"
+            exit 1
+            ;;
+    esac
+done
+
+if [ -z $PORT ] || [ -z $HOST ] || ([ -z $TEST_FILE ] && [ -z $DATA ])
+then
+    echo "Illegal usage: must have all flags [-p] [-h] [-fd]"
+    exit 1
+fi
+
+# detect whether to use $DATA or $TEST_FILE
+if [ ! -z $DATA ]
+then
+    echo "Calling curl on address $HOST:$PORT with given data"
+    curl "$HOST:$PORT" -d "$DATA"
+else
+    echo "Calling curl on address $HOST:$PORT with data from $TEST_FILE"
+    curl "$HOST:$PORT" -d "$(cat $TEST_FILE)"
+fi
