@@ -6,6 +6,7 @@
 
 ngx_uint_t presentation_max_module_count;
 
+/** TODO: REMOVE THIS CONSTANT */
 const int PORT = 0xB822; /* PORT 8888 (decimal to hex) in little endian */
 
 char* presentation_block(
