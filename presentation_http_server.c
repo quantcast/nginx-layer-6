@@ -13,15 +13,14 @@ void presentation_http_server_empty_handler(ngx_event_t *wev);
 u_char* presentation_http_server_log_error(ngx_log_t *log, u_char *buf, size_t len);
 void presentation_http_server_init_connection(ngx_connection_t *c);
 
-const ngx_str_t address = ngx_string("127.0.0.1");
-
 ngx_int_t presentation_http_server_init_listening(ngx_conf_t *cf, ngx_int_t port)
 {
     ngx_listening_t *ls;
     struct sockaddr_in *socket_address;
     size_t socket_length = sizeof(struct sockaddr_in);
 
-    ngx_str_t raw_address = address;
+    /** TODO: remove hard coding of localhost address value */
+    ngx_str_t raw_address = LOCALHOST;
 
     socket_address = ngx_pcalloc(cf->pool, socket_length);
     if (socket_address == NULL) {
