@@ -22,7 +22,7 @@ presentation_request_t *init_presentation_request(ngx_pool_t *pool, size_t size)
     request->last = request->start;
     request->end = request->start + size;
     request->pool = pool;
-    request->len = size;
+    request->size = size;
 
     return request;
 }
@@ -31,17 +31,17 @@ int presentation_request_realloc(presentation_request_t *request) {
     u_char *old_request_str = request->start;
     size_t diff = request->end - request->start;
 
-    request->start = ngx_pnalloc(request->pool, request->len * 2);
+    request->start = ngx_pnalloc(request->pool, request->size * 2);
 
     if (!request->start) {
         return NGX_DECLINED;
     }
 
-    strncpy((char *)request->start, (char *)old_request_str, request->len);
+    strncpy((char *)request->start, (char *)old_request_str, request->size);
 
-    request->len *= 2;
+    request->size *= 2;
     request->last = request->start + diff;
-    request->end = request->start + request->len;
+    request->end = request->start + request->size;
 
     if (ngx_pfree(request->pool, old_request_str)) {
         return NGX_DECLINED;
@@ -103,10 +103,12 @@ void presentation_http_request_handler(ngx_event_t *rev) {
     request = init_presentation_request(c->pool, size);
 
     if (request == NULL) {
-        ngx_log_error(NGX_LOG_ALERT, c->log, 0, "unable to allocate space for the request.");
+        ngx_log_error(NGX_LOG_ALERT, c->log, 0, "unable to allocate space for the presentation request struct.");
         presentation_http_request_close_connection(c);
         return;
-    } else if (request->start == NULL) {
+    }
+    
+    if (request->start == NULL) {
         ngx_log_error(NGX_LOG_ALERT, c->log, 0, "unable to allocate space for the request string.");
         presentation_http_request_close_connection(c);
         return;
