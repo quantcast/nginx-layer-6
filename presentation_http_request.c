@@ -29,7 +29,7 @@ presentation_request_t *init_presentation_request(ngx_pool_t *pool, size_t size)
 
 int presentation_request_realloc(presentation_request_t *request) {
     u_char *old_request_str = request->start;
-    size_t diff = request->end - request->start;
+    size_t diff = request->last - request->start;
 
     request->start = ngx_pnalloc(request->pool, request->size * 2);
 
@@ -43,7 +43,7 @@ int presentation_request_realloc(presentation_request_t *request) {
     request->last = request->start + diff;
     request->end = request->start + request->size;
 
-    if (ngx_pfree(request->pool, old_request_str)) {
+    if (!ngx_pfree(request->pool, old_request_str)) {
         return NGX_DECLINED;
     }
 
@@ -125,7 +125,7 @@ void presentation_http_request_handler(ngx_event_t *rev) {
      * 
      * 
      */
-    n = c->recv(c, request->last, size);
+    n = c->recv(c, request->last, request->size);
 
     if (n == NGX_AGAIN) {
         if (!rev->timer_set) {

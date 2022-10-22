@@ -8,8 +8,8 @@
 typedef struct presentation_request_s {
     ngx_pool_t  *pool;      /* The pool in which this memory lies */
     u_char      *start;     /* A pointer to the start of the request string */
-    u_char      *end;       /* A pointer to the end of the request string */
-    u_char      *last;      /* A pointer to the last memory location that is allocated for the string */
+    u_char      *end;       /* A pointer to the end of allocated memory for the string */
+    u_char      *last;      /* A pointer to the last character of the request string */
     size_t       size;      /* The amount of memory allocated for the request string */
 } presentation_request_t;
 
