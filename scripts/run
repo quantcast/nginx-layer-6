@@ -75,13 +75,18 @@ then
     echo "Generating the config file"
     if [ $QUIET == 0 ]
     then
-        ./scripts/generate-config
+        zsh ./scripts/generate-config
     else
-        ./scripts/generate-config >> /dev/null
+        zsh ./scripts/generate-config >> /dev/null
     fi
 fi
 
-cd $NGINX_PATH
+if [ -z "$NGINX_PATH" ]
+then
+    cd ../../nginx
+else
+    cd $NGINX_PATH
+fi
 
 # if there is no output directory, then we must reconfigure
 if [[ ! -d objs ]] || [[ ! -f Makefile ]]

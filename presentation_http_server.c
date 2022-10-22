@@ -29,7 +29,9 @@ ngx_int_t presentation_http_server_init_listening(ngx_conf_t *cf, ngx_int_t port
     ngx_memzero(socket_address, socket_length);
     socket_address->sin_family = AF_INET;
     socket_address->sin_port = port;
-    socket_address->sin_len = socket_length;
+    #if __APPLE__
+        socket_address->sin_len = socket_length;
+    #endif
     socket_address->sin_addr.s_addr = ngx_inet_addr(raw_address.data, raw_address.len);
     
     ls = ngx_create_listening(cf, (struct sockaddr*)socket_address, socket_length);
