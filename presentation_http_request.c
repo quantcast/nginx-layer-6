@@ -125,6 +125,37 @@ void presentation_http_request_handler(ngx_event_t *rev) {
      * 
      * 
      */
+
+    /* Plan of action:
+        1. receive header into struct
+        2. get content length from header
+        3. realloc the correct number of times
+        4. call recv the correct number of times
+    */
+
+   /* 1. receive header into struct */
+    n = recv_wrapper(c, request, rev);
+
+    if (n <= 0) {
+        return;
+    }
+
+    /* 2. get content length from header */
+    request->start
+
+}
+
+// TODO: this function should parse out the request body from the request buffer
+// not sure if these are all the necessary parameters
+ngx_str_t presentation_parse_http_request_body(ngx_buf_t request_buffer) {
+    ngx_str_t str = ngx_string("");
+    return str;
+}
+
+size_t recv_wrapper(ngx_connection_t *c, presentation_request_t *request, ngx_event_t *rev)
+{
+    size_t n;
+    
     n = c->recv(c, request->last, request->size);
 
     if (n == NGX_AGAIN) {
@@ -135,22 +166,22 @@ void presentation_http_request_handler(ngx_event_t *rev) {
 
         if (ngx_handle_read_event(rev, 0) != NGX_OK) {
             presentation_http_request_close_connection(c);
-            return;
+            return n;
         }
 
-        return;
+        return n;
     }
 
     if (n == NGX_ERROR) {
         presentation_http_request_close_connection(c);
-        return;
+        return n;
     }
 
     if (n == 0) {
         ngx_log_error(NGX_LOG_INFO, c->log, 0,
                       "client closed connection");
         presentation_http_request_close_connection(c);
-        return;
+        return n;
     }
 
     request->last += n;
@@ -158,11 +189,33 @@ void presentation_http_request_handler(ngx_event_t *rev) {
     c->log->action = "reading client request line";
 
     ngx_reusable_connection(c, 0);
+
+    return n;
 }
 
-// TODO: this function should parse out the request body from the request buffer
-// not sure if these are all the necessary parameters
-ngx_str_t presentation_parse_http_request_body(ngx_buf_t request_buffer) {
-    ngx_str_t str = ngx_string("");
-    return str;
+size_t find_content_length(char *str) {
+    size_t i, str_size, header_size;
+    char* header;
+
+    i = 0;
+    str_size = strlen(str);
+    header = "Content-length: ";
+    header_size = strlen(header);
+
+    while (i < str_size) {
+        for (int j = 0; j < header_size; ++j) {
+            if (str[i + j] != header[j]) {
+                break;
+            }
+            if (j == header_size) {
+                i += j;
+                char* size;
+                size_t l;
+                while (str[i + l] != '\n') { 
+                    ++l;
+                }
+                memcpy(size, str[i], l);
+            }
+        }
+    }
 }

@@ -36,4 +36,8 @@ int presentation_request_free(presentation_request_t *request);
 void presentation_http_request_handler(ngx_event_t *rev);
 void presentation_http_request_close_connection(ngx_connection_t *c);
 
+/* Helper function to call the recv function with error checking */
+size_t recv_wrapper(ngx_connection_t *c, presentation_request_t *request, ngx_event_t *rev);
+
+
 #endif
