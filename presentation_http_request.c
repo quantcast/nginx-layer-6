@@ -141,8 +141,8 @@ void presentation_http_request_handler(ngx_event_t *rev) {
     }
 
     /* 2. get content length from header */
-    request->start
-
+    printf("\n\ncontent length: %zu", find_content_length((char*) request->start));
+    fflush(stdout);
 }
 
 // TODO: this function should parse out the request body from the request buffer
@@ -154,7 +154,7 @@ ngx_str_t presentation_parse_http_request_body(ngx_buf_t request_buffer) {
 
 size_t recv_wrapper(ngx_connection_t *c, presentation_request_t *request, ngx_event_t *rev)
 {
-    size_t n;
+    int n;
     
     n = c->recv(c, request->last, request->size);
 
@@ -199,23 +199,32 @@ size_t find_content_length(char *str) {
 
     i = 0;
     str_size = strlen(str);
-    header = "Content-length: ";
+    header = "Content-Length: ";
     header_size = strlen(header);
 
-    while (i < str_size) {
-        for (int j = 0; j < header_size; ++j) {
+    while (i < str_size) {                          /* iterate through each char in headers */
+        if (str[i] != '\n') {
+            ++i;
+            continue;
+        }
+        ++i;
+        for (size_t j = 0; j < header_size; ++j) {     /* check for "Content-length" header */
             if (str[i + j] != header[j]) {
-                break;
+                break;                              /* if mismatch, break */
             }
-            if (j == header_size) {
+            if (j == header_size - 1) {                 /* ensure we have read the whole header name */
                 i += j;
-                char* size;
                 size_t l;
-                while (str[i + l] != '\n') { 
+                l = 0;
+                while (str[i + l] != '\n') {        /* go to the end of the length value (until newline) */
                     ++l;
                 }
-                memcpy(size, str[i], l);
+                char size[l];
+                memcpy(size, &str[i+1], l-1);            /* put the length value string into size variable */
+                return (size_t) atoi(size);
             }
         }
     }
+
+    return 0;
 }
