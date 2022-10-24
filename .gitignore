@@ -1,5 +1,4 @@
 .DS_Store
-run
 .vscode/
 .env
 nginx-layer-6-key

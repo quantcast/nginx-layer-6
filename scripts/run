@@ -69,15 +69,17 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+CURRENT_DIR=$(pwd)
+
 # regenerate the configure file
 if [ $CONFIGURE == 1 ]
 then
     echo "Generating the config file"
     if [ $QUIET == 0 ]
     then
-        zsh ./scripts/generate-config
+        zsh $CURRENT_DIR/scripts/generate-config
     else
-        zsh ./scripts/generate-config >> /dev/null
+        zsh $CURRENT_DIR/scripts/generate-config >> /dev/null
     fi
 fi
 
@@ -133,7 +135,7 @@ echo "Starting nginx"
 # logic for quiet command
 if [ $QUIET == 1 ]
 then
-    out/sbin/nginx >> /dev/null
+    out/sbin/nginx -c $CURRENT_DIR/nginx.conf >> /dev/null
 else
-    out/sbin/nginx
+    out/sbin/nginx -c $CURRENT_DIR/nginx.conf
 fi
