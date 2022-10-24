@@ -1,9 +1,10 @@
 #include <nginx.h>
 #include <ngx_core.h>
 #include <ngx_string.h>
-#include <ngx_event.h>
+#include <ngx_event_connect.h>
 
 #include "presentation_http_request.h"
+#include "presentation_upstream.h"
 
 presentation_request_t *init_presentation_request(ngx_pool_t *pool, size_t size) {
     presentation_request_t *request = ngx_pcalloc(pool, sizeof(presentation_request_t));
@@ -126,6 +127,10 @@ void presentation_http_request_handler(ngx_event_t *rev) {
      * 
      */
     n = c->recv(c, request->last, size);
+
+    // testing measure
+    presentation_upstream_t *upstream = presentation_create_upstream(c, "127.0.0.1", 8888);
+    presentation_initialize_upstream_connection(upstream);
 
     if (n == NGX_AGAIN) {
         if (!rev->timer_set) {

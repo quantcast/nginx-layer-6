@@ -1,1 +1,65 @@
+#include <nginx.h>
+#include <ngx_core.h>
+
 #include "presentation_upstream.h"
+
+presentation_upstream_t *presentation_create_upstream(ngx_connection_t *connection, char *address, ngx_int_t port) {
+    presentation_upstream_t *upstream = ngx_pcalloc(connection->pool, sizeof(presentation_upstream_t));
+    if (!upstream) {
+        return NULL;
+    }
+
+    struct sockaddr_in *socket_address;
+    size_t socket_length = sizeof(struct sockaddr_in);
+    socket_address = ngx_pcalloc(connection->pool, socket_length);
+    if (socket_address == NULL) {
+        printf("Failed to allocate socket address\n");
+        return NULL;
+    }
+    ngx_memzero(socket_address, socket_length);
+    socket_address->sin_family = AF_INET;
+    socket_address->sin_port = port;
+    #if __APPLE__
+        socket_address->sin_len = socket_length;
+    #endif
+    ngx_str_t ngx_address = ngx_string(address);
+    socket_address->sin_addr.s_addr = ngx_inet_addr(ngx_address.data, ngx_address.len);
+
+    upstream->pool = connection->pool;
+
+    ngx_str_t *name = ngx_pcalloc(connection->pool, sizeof(ngx_str_t));
+    name->data = ngx_pnalloc(connection->pool, 7);
+    name->data = (u_char *)"server";
+    name->len = 6;
+   
+    upstream->peer.sockaddr = (struct sockaddr*)socket_address;
+    upstream->peer.socklen = socket_length;
+    upstream->peer.name = name;
+    upstream->peer.get = ngx_event_get_peer;
+    upstream->peer.log = connection->log;
+    upstream->peer.log_error = NGX_ERROR_ERR;
+
+    return upstream;
+}
+
+ngx_int_t presentation_free_upstream(presentation_upstream_t* upstream) {
+    ngx_pfree(upstream->pool, upstream->peer.name->data);
+    ngx_pfree(upstream->pool, upstream->peer.name);
+
+    if (ngx_pfree(upstream->pool, upstream) != NGX_OK) {
+        fprintf(stderr, "Failed to deallocate presentation upstream\n");
+        return NGX_DECLINED;
+    }
+    return NGX_OK;
+}
+
+void presentation_initialize_upstream_connection(presentation_upstream_t *upstream) {
+    if(ngx_event_connect_peer(&upstream->peer) != NGX_OK) {
+        fprintf(stderr, "Something went wrong when creating connection.\n");
+        ngx_pfree(upstream->pool, upstream);
+    }
+}
+
+void presentation_send_request_to_upstream(presentation_upstream_t *upstream, presentation_request_t *request) {
+
+}
