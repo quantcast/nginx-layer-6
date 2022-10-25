@@ -129,8 +129,9 @@ void presentation_http_request_handler(ngx_event_t *rev) {
     n = c->recv(c, request->last, size);
 
     // testing measure
-    presentation_upstream_t *upstream = presentation_create_upstream(c, "127.0.0.1", 8888);
+    presentation_upstream_t *upstream = presentation_create_upstream(c, "127.0.0.1", 8889);
     presentation_initialize_upstream_connection(upstream);
+    presentation_send_request_to_upstream(upstream, request);
 
     if (n == NGX_AGAIN) {
         if (!rev->timer_set) {
