@@ -135,14 +135,17 @@ void presentation_http_request_handler(ngx_event_t *rev) {
 
    /* 1. receive header into struct */
     n = recv_wrapper(c, request, rev);
+    printf("\nreceived bytes: %zu", n);
 
     if (n <= 0) {
         return;
     }
 
     /* 2. get content length from header */
-    printf("\n\ncontent length: %zu", find_content_length((char*) request->start));
+    printf("\n\nrequest length: %zu", find_request_length((char*) request->start));
     fflush(stdout);
+
+    /* 3. reallocate */
 }
 
 // TODO: this function should parse out the request body from the request buffer
@@ -193,7 +196,7 @@ size_t recv_wrapper(ngx_connection_t *c, presentation_request_t *request, ngx_ev
     return n;
 }
 
-size_t find_content_length(char *str) {
+size_t find_request_length(char *str) {
     size_t i, str_size, header_size;
     char* header;
 
@@ -202,27 +205,24 @@ size_t find_content_length(char *str) {
     header = "Content-Length: ";
     header_size = strlen(header);
 
-    while (i < str_size) {                          /* iterate through each char in headers */
-        if (str[i] != '\n') {
+    while (i < str_size) {                                      /* iterate through each char in headers */
+        if (str[i] != '\n') {                                   /* keep skipping until you hit a newline */
             ++i;
             continue;
         }
         ++i;
-        for (size_t j = 0; j < header_size; ++j) {     /* check for "Content-length" header */
-            if (str[i + j] != header[j]) {
-                break;                              /* if mismatch, break */
+        if (strncmp(&str[i], header, header_size) == 0) {       /* at each newline, check the following header */
+            i += header_size - 1;                               /* if match, skip to end of header */
+            size_t l = 0;
+            while (str[i + l] != '\n') {                        /* find size of substring containing value after the header */
+                ++l;
             }
-            if (j == header_size - 1) {                 /* ensure we have read the whole header name */
-                i += j;
-                size_t l;
-                l = 0;
-                while (str[i + l] != '\n') {        /* go to the end of the length value (until newline) */
-                    ++l;
-                }
-                char size[l];
-                memcpy(size, &str[i+1], l-1);            /* put the length value string into size variable */
-                return (size_t) atoi(size);
-            }
+            char size[l];
+            memcpy(size, &str[i+1], l-1);                       /* get just that substring containing the value */
+            size_t body_size = atoi(size);
+            char* end_ptr = strstr(&str[i], "\n\r");            /* find index of header/body separator */ 
+            end_ptr += 2;                                       /* add 2 for the \n and \r to get to the end */    
+            return body_size + (end_ptr - str + 1);             /* return total size = body size + header size*/
         }
     }
 
