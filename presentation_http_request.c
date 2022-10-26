@@ -5,6 +5,8 @@
 
 #include "presentation_http_request.h"
 
+#define REQUEST_SIZE 1024
+
 presentation_request_t *init_presentation_request(ngx_pool_t *pool, size_t size) {
     presentation_request_t *request = ngx_pcalloc(pool, sizeof(presentation_request_t));
 
@@ -43,8 +45,8 @@ int presentation_request_realloc(presentation_request_t *request) {
     request->last = request->start + diff;
     request->end = request->start + request->size;
 
-    if (!ngx_pfree(request->pool, old_request_str)) {
-        return NGX_DECLINED;
+    if (ngx_pfree(request->pool, old_request_str) != NGX_OK) {
+        return NGX_DECLINED;    // TODO: return the pfree error code instead
     }
 
     return NGX_OK;
@@ -79,7 +81,6 @@ void presentation_http_request_close_connection(ngx_connection_t *c)
 }
 
 void presentation_http_request_handler(ngx_event_t *rev) {
-    size_t                     size;
     ssize_t                    n;
     presentation_request_t    *request;
     ngx_connection_t          *c;
@@ -99,8 +100,7 @@ void presentation_http_request_handler(ngx_event_t *rev) {
         return;
     }
 
-    size = 1024;
-    request = init_presentation_request(c->pool, size);
+    request = init_presentation_request(c->pool, REQUEST_SIZE);
 
     if (request == NULL) {
         ngx_log_error(NGX_LOG_ALERT, c->log, 0, "unable to allocate space for the presentation request struct.");
@@ -133,19 +133,41 @@ void presentation_http_request_handler(ngx_event_t *rev) {
         4. call recv the correct number of times
     */
 
-   /* 1. receive header into struct */
+   /* 1. receive headers into struct */
     n = recv_wrapper(c, request, rev);
-    printf("\nreceived bytes: %zu", n);
+    printf("\nbytes received in first call: %zu", n);
+    fflush(stdout);
 
     if (n <= 0) {
         return;
     }
 
-    /* 2. get content length from header */
-    printf("\n\nrequest length: %zu", find_request_length((char*) request->start));
+    /* 2. get request length */
+    printf("\ngetting request length");
+    ssize_t request_length = find_request_length((char*) request->start);
+    printf("\nrequest length: %zu", request_length);
     fflush(stdout);
 
-    /* 3. reallocate */
+    /* 3. reallocate enough memory to hold request size */
+    /*    (do this before receiving to minimize number of copy calls) */
+    printf("\nreallocating");
+    fflush(stdout);
+    while ((ssize_t) request->size < request_length) {
+        if (presentation_request_realloc(request) != NGX_OK) {
+            return;
+        }
+    }
+
+    /* 4. call receive function until we have read the entire request */
+    printf("\ncalling receive function");
+    fflush(stdout);
+    while (n < (ssize_t) request_length) {
+        n += recv_wrapper(c, request, rev);
+        printf("\ntotal bytes received: %zu", n);
+        fflush(stdout);
+    }
+
+    // TODO: debug: stops working if you lower REQUEST_SIZE to 256 or lower
 }
 
 // TODO: this function should parse out the request body from the request buffer
@@ -196,7 +218,7 @@ size_t recv_wrapper(ngx_connection_t *c, presentation_request_t *request, ngx_ev
     return n;
 }
 
-size_t find_request_length(char *str) {
+ssize_t find_request_length(char *str) {
     size_t i, str_size, header_size;
     char* header;
 
@@ -219,7 +241,7 @@ size_t find_request_length(char *str) {
             }
             char size[l];
             memcpy(size, &str[i+1], l-1);                       /* get just that substring containing the value */
-            size_t body_size = atoi(size);
+            ssize_t body_size = atoi(size);
             char* end_ptr = strstr(&str[i], "\n\r");            /* find index of header/body separator */ 
             end_ptr += 2;                                       /* add 2 for the \n and \r to get to the end */    
             return body_size + (end_ptr - str + 1);             /* return total size = body size + header size*/
