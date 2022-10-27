@@ -52,7 +52,9 @@ ngx_int_t presentation_free_upstream(presentation_upstream_t* upstream) {
 }
 
 void presentation_initialize_upstream_connection(presentation_upstream_t *upstream) {
-    if(ngx_event_connect_peer(&upstream->peer) != NGX_OK) {
+    ngx_int_t result = ngx_event_connect_peer(&upstream->peer);
+    if (result != NGX_OK) {
+        printf("%ld\n", result);
         fprintf(stderr, "Something went wrong when creating connection.\n");
         ngx_pfree(upstream->pool, upstream);
     }
