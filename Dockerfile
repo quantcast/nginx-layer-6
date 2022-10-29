@@ -1,14 +1,8 @@
-FROM ubuntu
+FROM ubuntu:latest
 
 RUN apt-get update && \
-    apt-get -y install sudo && \
-    sudo apt-get -y install git && \
-    sudo apt-get -y install mercurial
+    apt-get -y install sudo git mercurial make \
+    build-essential libpcre3 libpcre3-dev zlib1g \
+    zlib1g-dev libssl-dev zsh curl
 
 RUN hg clone https://hg.nginx.org/nginx#stable-1.22
-
-ADD nginx-layer-6-key /
-RUN chmod 600 /nginx-layer-6-key && \
-    echo "IdentityFile /nginx-layer-6-key" >> /etc/ssh/ssh_config && \  
-    echo -e "StrictHostKeyChecking no" >> /etc/ssh/ssh_config && \  
-    git clone https://github.com/quantcast/nginx-layer-6/tree/development
