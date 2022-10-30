@@ -7,6 +7,16 @@
 #include "presentation_upstream.h"
 #include "presentation_load_balancer.h"
 
+ngx_array_t *upstreams;
+
+void create_upstreams(ngx_pool_t* pool) {
+    upstreams = ngx_array_create(pool, 4, sizeof(presentation_upstream_t));
+    presentation_upstream_t* upstream_elements = upstreams->elts;
+    upstream_elements[0] = *presentation_create_upstream(pool, "127.0.0.1", 8889);
+    upstream_elements[1] = *presentation_create_upstream(pool, "127.0.0.1", 8890);
+    upstream_elements[2] = *presentation_create_upstream(pool, "127.0.0.1", 8891);
+    upstream_elements[3] = *presentation_create_upstream(pool, "127.0.0.1", 8892);
+}
 
 presentation_request_t *init_presentation_request(ngx_pool_t *pool, size_t size) {
     presentation_request_t *request = ngx_pcalloc(pool, sizeof(presentation_request_t));
@@ -130,12 +140,6 @@ void presentation_http_request_handler(ngx_event_t *rev) {
      */
     n = c->recv(c, request->last, size);
 
-    ngx_array_t *upstreams = ngx_array_create(c->pool, 4, sizeof(presentation_upstream_t));
-    presentation_upstream_t* upstream_elements = upstreams->elts;
-    upstream_elements[0] = *presentation_create_upstream(c, "127.0.0.1", 8889);
-    upstream_elements[1] = *presentation_create_upstream(c, "127.0.0.1", 8890);
-    upstream_elements[2] = *presentation_create_upstream(c, "127.0.0.1", 8891);
-    upstream_elements[3] = *presentation_create_upstream(c, "127.0.0.1", 8892);
     presentation_load_balance(request, "", "round_robin", upstreams);
 
     if (n == NGX_AGAIN) {

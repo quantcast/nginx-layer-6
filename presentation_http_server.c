@@ -7,6 +7,7 @@
 #include "presentation_http_request.h"
 
 #include "presentation_http_server.h"
+#include "presentation_upstream.h"
 
 void presentation_http_server_close_connection(ngx_connection_t *c);
 void presentation_http_server_empty_handler(ngx_event_t *wev);
@@ -104,6 +105,4 @@ u_char* presentation_http_server_log_error(ngx_log_t *log, u_char *buf, size_t l
 void presentation_http_server_empty_handler(ngx_event_t *wev)
 {
     ngx_log_debug0(NGX_LOG_DEBUG_HTTP, wev->log, 0, "http empty handler");
-
-    return;
 }

@@ -36,4 +36,6 @@ int presentation_request_free(presentation_request_t *request);
 void presentation_http_request_handler(ngx_event_t *rev);
 void presentation_http_request_close_connection(ngx_connection_t *c);
 
+void create_upstreams(ngx_pool_t* pool);
+
 #endif
