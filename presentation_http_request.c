@@ -243,7 +243,7 @@ int find_request_length(presentation_request_t *request) {
 
             u_char* end_ptr = (u_char*) strstr(&str[i], "\r\n\r\n");        /* find index of header/body separator */ 
             if (end_ptr == NULL) {
-                return -1;
+                return NGX_ERROR;
             }
 
             end_ptr += 3;                                       /* add 3 to get to the end of the \r\n\r\n */ 
@@ -252,5 +252,5 @@ int find_request_length(presentation_request_t *request) {
         }
     }
 
-    return 0;
+    return NGX_OK;
 }
