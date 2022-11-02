@@ -43,7 +43,8 @@ int presentation_request_realloc(presentation_request_t *request, ssize_t size) 
         return NGX_DECLINED;
     }
 
-    strncpy((char *)request->start, (char *)old_request_str, request->size);
+
+    ngx_memcpy((char *)request->start, (char *)old_request_str, request->size);
 
     request->size *= 2;
     request->last = request->start + diff;
@@ -149,7 +150,7 @@ void presentation_http_request_handler(ngx_event_t *rev) {
     }
 
     /* 2. get request length */
-    int request_length = find_request_length(&request);
+    int request_length = find_request_length(request);
     if (request_length < 0) {
         return;
     }
@@ -221,9 +222,10 @@ int find_request_length(presentation_request_t *request) {
 
     i = 0;
     str = request->start;
-    str_size = strlen(str);
+    //str_size = strlen(str);
+    str_size = request->last - request->start + 1;
     header = "Content-Length: ";
-    header_size = strlen(header);
+    header_size = ngx_strlen(header);
 
     while (i < str_size) {                                      /* iterate through each char in headers */
         if (str[i] != '\n') {                                   /* keep skipping until you hit a newline */
@@ -231,17 +233,17 @@ int find_request_length(presentation_request_t *request) {
             continue;
         }
         ++i;
-        if (strncmp(&str[i], header, header_size) == 0) {       /* at each newline, check the following header */
+        if (ngx_strncmp(&str[i], header, header_size) == 0) {       /* at each newline, check the following header */
             i += header_size - 1;                               /* if match, skip to end of header */
             size_t l = 0;
             while (str[i + l] != '\n') {                        /* find size of substring containing value after the header */
                 ++l;
             }
             char size[l];
-            memcpy(size, &str[i+1], l-1);                       /* get just that substring containing the value */
+            ngx_memcpy(size, &str[i+1], l-1);                       /* get just that substring containing the value */
             ssize_t body_size = atoi(size);
 
-            u_char* end_ptr = (u_char*) strstr(&str[i], "\r\n\r\n");        /* find index of header/body separator */ 
+            u_char* end_ptr = (u_char*) ngx_strstr(&str[i], "\r\n\r\n");        /* find index of header/body separator */ 
             if (end_ptr == NULL) {
                 return NGX_ERROR;
             }
