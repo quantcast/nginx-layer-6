@@ -5,7 +5,9 @@
 
 #include "presentation_http_request.h"
 
-#define REQUEST_SIZE 1024
+/* don't set this less than ~100 (or we might not read all the headers in the first receive call) */
+/* see bug in realloc function */
+#define REQUEST_SIZE 528
 
 presentation_request_t *init_presentation_request(ngx_pool_t *pool, size_t size) {
     presentation_request_t *request = ngx_pcalloc(pool, sizeof(presentation_request_t));
@@ -23,17 +25,19 @@ presentation_request_t *init_presentation_request(ngx_pool_t *pool, size_t size)
 
     request->last = request->start;
     request->end = request->start + size;
+    request->body = NULL;
     request->pool = pool;
     request->size = size;
 
     return request;
 }
 
-int presentation_request_realloc(presentation_request_t *request) {
+int presentation_request_realloc(presentation_request_t *request, ssize_t size) {
     u_char *old_request_str = request->start;
     size_t diff = request->last - request->start;
 
-    request->start = ngx_pnalloc(request->pool, request->size * 2);
+    //request->start = ngx_pnalloc(request->pool, request->size * 2);
+    request->start = ngx_pnalloc(request->pool, size);
 
     if (!request->start) {
         return NGX_DECLINED;
@@ -45,6 +49,10 @@ int presentation_request_realloc(presentation_request_t *request) {
     request->last = request->start + diff;
     request->end = request->start + request->size;
 
+    /* pfree only reallocates "large allocations" (> NGX_MAX_ALLOC_FROM_POOL) so if current 
+    request string is not a "large allocation" pfree will not find it and fail. 
+    TODO: fix this 
+    (current solution: keep REQUEST_SIZE >= 528) */
     if (ngx_pfree(request->pool, old_request_str) != NGX_OK) {
         return NGX_DECLINED;    // TODO: return the pfree error code instead
     }
@@ -135,39 +143,27 @@ void presentation_http_request_handler(ngx_event_t *rev) {
 
    /* 1. receive headers into struct */
     n = recv_wrapper(c, request, rev);
-    printf("\nbytes received in first call: %zu", n);
-    fflush(stdout);
 
     if (n <= 0) {
         return;
     }
 
     /* 2. get request length */
-    printf("\ngetting request length");
-    ssize_t request_length = find_request_length((char*) request->start);
-    printf("\nrequest length: %zu", request_length);
-    fflush(stdout);
+    int request_length = find_request_length(&request);
+    if (request_length < 0) {
+        return;
+    }
 
     /* 3. reallocate enough memory to hold request size */
     /*    (do this before receiving to minimize number of copy calls) */
-    printf("\nreallocating");
-    fflush(stdout);
-    while ((ssize_t) request->size < request_length) {
-        if (presentation_request_realloc(request) != NGX_OK) {
-            return;
-        }
-    }
+    presentation_request_realloc(request, (ssize_t) request_length);
 
     /* 4. call receive function until we have read the entire request */
-    printf("\ncalling receive function");
-    fflush(stdout);
-    while (n < (ssize_t) request_length) {
-        n += recv_wrapper(c, request, rev);
-        printf("\ntotal bytes received: %zu", n);
-        fflush(stdout);
+    while (n < (ssize_t) request_length && rev->ready) {
+        int m = recv_wrapper(c, request, rev);
+        if (m < 0) { return; }
+        n += m;
     }
-
-    // TODO: debug: stops working if you lower REQUEST_SIZE to 256 or lower
 }
 
 // TODO: this function should parse out the request body from the request buffer
@@ -218,11 +214,13 @@ size_t recv_wrapper(ngx_connection_t *c, presentation_request_t *request, ngx_ev
     return n;
 }
 
-ssize_t find_request_length(char *str) {
+int find_request_length(presentation_request_t *request) {
+    u_char* str;
     size_t i, str_size, header_size;
     char* header;
 
     i = 0;
+    str = request->start;
     str_size = strlen(str);
     header = "Content-Length: ";
     header_size = strlen(header);
@@ -242,8 +240,14 @@ ssize_t find_request_length(char *str) {
             char size[l];
             memcpy(size, &str[i+1], l-1);                       /* get just that substring containing the value */
             ssize_t body_size = atoi(size);
-            char* end_ptr = strstr(&str[i], "\n\r");            /* find index of header/body separator */ 
-            end_ptr += 2;                                       /* add 2 for the \n and \r to get to the end */    
+
+            u_char* end_ptr = (u_char*) strstr(&str[i], "\r\n\r\n");        /* find index of header/body separator */ 
+            if (end_ptr == NULL) {
+                return -1;
+            }
+
+            end_ptr += 3;                                       /* add 3 to get to the end of the \r\n\r\n */ 
+            request->body = end_ptr + 1;   
             return body_size + (end_ptr - str + 1);             /* return total size = body size + header size*/
         }
     }
