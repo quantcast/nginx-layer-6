@@ -123,25 +123,6 @@ void presentation_http_request_handler(ngx_event_t *rev) {
         return;
     }
 
-    /**
-     * TODO: This is next line receives a single IP packet of up to size `size` bytes. The `request` is memory allocated on the heap
-     * that can hold the request. The arguments are the connection (c), where to put the data (request->last, since we want to append
-     * to the current request), and the upper limit on the size to read.
-     * 
-     * It will return an integer (n) which tells us how many bytes have been read. We want to continue to read until we have the full request.
-     * Remember to clean up memory and resources as you do this (the provided `presentation_request_realloc` and `presentation_request_free`
-     * functions should help you do this, but they may or may not have bugs in them).
-     * 
-     * 
-     */
-
-    /* Plan of action:
-        1. receive header into struct
-        2. get content length from header
-        3. realloc the correct number of times
-        4. call recv the correct number of times
-    */
-
    /* 1. receive headers into struct */
     n = recv_wrapper(c, request, rev);
 
@@ -165,13 +146,6 @@ void presentation_http_request_handler(ngx_event_t *rev) {
         if (m < 0) { return; }
         n += m;
     }
-}
-
-// TODO: this function should parse out the request body from the request buffer
-// not sure if these are all the necessary parameters
-ngx_str_t presentation_parse_http_request_body(ngx_buf_t request_buffer) {
-    ngx_str_t str = ngx_string("");
-    return str;
 }
 
 size_t recv_wrapper(ngx_connection_t *c, presentation_request_t *request, ngx_event_t *rev)
@@ -222,11 +196,9 @@ ssize_t find_request_length(presentation_request_t *request) {
 
     i = 0;
     str = request->start;
-    //str_size = strlen(str);
     str_size = request->last - request->start + 1;
-    // header = ngx_string("Content-Length: ");
     header_label = "Content-Length: ";
-    header_label_size = ngx_strlen(header);
+    header_label_size = ngx_strlen(header_label);
     separator = "\r\n\r\n";
     separator_size = ngx_strlen(separator);
 
@@ -236,35 +208,27 @@ ssize_t find_request_length(presentation_request_t *request) {
             continue;
         }
         ++i;
+
         if (ngx_strncmp(&str[i], header_label, header_label_size) == 0) {       /* at each newline, check the following header */
-            i += header_label_size - 1;                                   /* if match, skip to end of header */
+            i += header_label_size;                                   /* if match, skip to end of header */
             size_t l = 0;
-            while (str[i + l] != '\n') {                            /* find size of substring containing value after the header */
+            while (str[i + l] != '\r' && str[i + l] != '\n') {                            /* find size of substring containing value after the header */
                 ++l;
             }
-            u_char size[l];
-            ngx_memcpy(size, &str[i+1], l-1);                       /* get just that substring containing the value */
-            ssize_t body_size = ngx_atoi(size, ngx_strlen(size));
+            ssize_t body_size = ngx_atosz(&str[i], l);
 
             u_char* end_ptr = (u_char*) ngx_strstr(&str[i], separator);        /* find index of header/body separator */ 
+            
             if (end_ptr == NULL) {
-                return NGX_ERROR; // TODO: add case for empty body
+                return NGX_ERROR;
             }
             else {
                 request->body = end_ptr + separator_size;
                 header_size = request->body - str;
                 return body_size + header_size;
             }
-
-            // if (end_ptr == NULL) {
-            //     return NGX_ERROR;
-            // }
-            
-            // end_ptr += separator_size - 1;                        /* to get to the end of the \r\n\r\n */ 
-            //request->body = end_ptr + 1;   
-            //return body_size + (end_ptr - str + 1);                 /* return total size = body size + header size*/
         }
     }
 
-    return NGX_OK;
+    return NGX_ERROR;
 }
