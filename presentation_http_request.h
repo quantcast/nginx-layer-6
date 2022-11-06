@@ -39,6 +39,9 @@ void presentation_http_request_close_connection(ngx_connection_t *c);
 
 /* Helper function to call the recv function with error checking */
 size_t recv_wrapper(ngx_connection_t *c, presentation_request_t *request, ngx_event_t *rev);
+
+/* Give a request, finds the total length of headers + body
+   Also sets the request->body pointer to the start of the body */
 ssize_t find_request_length(presentation_request_t *request);
 
 

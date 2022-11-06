@@ -5,9 +5,13 @@
 
 #include "presentation_http_request.h"
 
-/* don't set this less than ~100 (or we might not read all the headers in the first receive call) */
-/* see bug in realloc function */
+/* keep REQUEST_SIZE >= 528 for 2 reasons:
+    1) to ensure we get all the headers in the first recv
+    2) to ensure it is allocated as a "large allocation" (> NGX_MAX_ALLOC_FROM_POOL) */
 #define REQUEST_SIZE 528
+
+#define LENGTH_HEADER "Content-Length: "
+#define HEADER_BODY_SEPARATOR "\r\n\r\n"
 
 presentation_request_t *init_presentation_request(ngx_pool_t *pool, size_t size) {
     presentation_request_t *request = ngx_pcalloc(pool, sizeof(presentation_request_t));
@@ -36,13 +40,11 @@ int presentation_request_realloc(presentation_request_t *request, ssize_t size) 
     u_char *old_request_str = request->start;
     size_t diff = request->last - request->start;
 
-    //request->start = ngx_pnalloc(request->pool, request->size * 2);
     request->start = ngx_pnalloc(request->pool, size);
 
     if (!request->start) {
         return NGX_DECLINED;
     }
-
 
     ngx_memcpy((char *)request->start, (char *)old_request_str, request->size);
 
@@ -52,10 +54,9 @@ int presentation_request_realloc(presentation_request_t *request, ssize_t size) 
 
     /* pfree only reallocates "large allocations" (> NGX_MAX_ALLOC_FROM_POOL) so if current 
     request string is not a "large allocation" pfree will not find it and fail. 
-    TODO: fix this 
-    (current solution: keep REQUEST_SIZE >= 528) */
+    keep REQUEST_SIZE >= 528 */
     if (ngx_pfree(request->pool, old_request_str) != NGX_OK) {
-        return NGX_DECLINED;    // TODO: return the pfree error code instead
+        return NGX_DECLINED;
     }
 
     return NGX_OK;
@@ -73,8 +74,7 @@ int presentation_request_free(presentation_request_t *request) {
     return NGX_OK;
 }
 
-void presentation_http_request_close_connection(ngx_connection_t *c)
-{
+void presentation_http_request_close_connection(ngx_connection_t *c) {
     ngx_pool_t  *pool;
 
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, c->log, 0,
@@ -123,33 +123,38 @@ void presentation_http_request_handler(ngx_event_t *rev) {
         return;
     }
 
-   /* 1. receive headers into struct */
+   /* receive headers into struct */
     n = recv_wrapper(c, request, rev);
 
     if (n <= 0) {
+        ngx_log_error(NGX_LOG_ALERT, c->log, 0, "failed recv.");
         return;
     }
 
-    /* 2. get request length */
+    /* get request length */
     ssize_t request_length = find_request_length(request);
     if (request_length < 0) {
+        ngx_log_error(NGX_LOG_ALERT, c->log, 0, "unable to find request length.");
         return;
     }
 
-    /* 3. reallocate enough memory to hold request size */
-    /*    (do this before receiving to minimize number of copy calls) */
+    /* reallocate enough memory to hold request length */
     presentation_request_realloc(request, (ssize_t) request_length);
 
-    /* 4. call receive function until we have read the entire request */
+    /* call receive function until we have read the entire request */
     while (n < (ssize_t) request_length && rev->ready) {
         int m = recv_wrapper(c, request, rev);
-        if (m < 0) { return; }
+
+        if (m < 0) { 
+            ngx_log_error(NGX_LOG_ALERT, c->log, 0, "failed recv.");
+            return; 
+        }
+
         n += m;
     }
 }
 
-size_t recv_wrapper(ngx_connection_t *c, presentation_request_t *request, ngx_event_t *rev)
-{
+size_t recv_wrapper(ngx_connection_t *c, presentation_request_t *request, ngx_event_t *rev) {
     int n;
     
     n = c->recv(c, request->last, request->size);
@@ -191,33 +196,36 @@ size_t recv_wrapper(ngx_connection_t *c, presentation_request_t *request, ngx_ev
 
 ssize_t find_request_length(presentation_request_t *request) {
     u_char* str;
-    size_t i, str_size, header_label_size, separator_size, header_size;
-    char *header_label, *separator;
+    size_t i, str_size, length_header_size, separator_size, header_size;
 
     i = 0;
     str = request->start;
     str_size = request->last - request->start + 1;
-    header_label = "Content-Length: ";
-    header_label_size = ngx_strlen(header_label);
-    separator = "\r\n\r\n";
-    separator_size = ngx_strlen(separator);
+    length_header_size = ngx_strlen(LENGTH_HEADER);
+    separator_size = ngx_strlen(HEADER_BODY_SEPARATOR);
 
-    while (i < str_size) {                                          /* iterate through each char in headers */
-        if (str[i] != '\n') {                                       /* keep skipping until you hit a newline */
+    /* iterate through each char in headers */
+    while (i < str_size) {                                          
+        if (str[i] != '\n') {
             ++i;
             continue;
         }
         ++i;
 
-        if (ngx_strncmp(&str[i], header_label, header_label_size) == 0) {       /* at each newline, check the following header */
-            i += header_label_size;                                   /* if match, skip to end of header */
+        /* at each newline, check the following header */
+        if (ngx_strncmp(&str[i], LENGTH_HEADER, length_header_size) == 0) {     
+            i += length_header_size;
             size_t l = 0;
-            while (str[i + l] != '\r' && str[i + l] != '\n') {                            /* find size of substring containing value after the header */
+
+            /* find size of substring containing value after the header */
+            while (str[i + l] != '\r' && str[i + l] != '\n') {
                 ++l;
             }
+
             ssize_t body_size = ngx_atosz(&str[i], l);
 
-            u_char* end_ptr = (u_char*) ngx_strstr(&str[i], separator);        /* find index of header/body separator */ 
+            /* find index of header/body separator */ 
+            u_char* end_ptr = (u_char*) ngx_strstr(&str[i], HEADER_BODY_SEPARATOR);
             
             if (end_ptr == NULL) {
                 return NGX_ERROR;
