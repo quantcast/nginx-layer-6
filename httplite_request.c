@@ -59,7 +59,6 @@ void httplite_request_handler(ngx_event_t *rev)
     }
 
     n = c->recv(c, b->last, size);
-    printf("%s\n", b->start);
 
     // TODO: Is this a safe assumption? 
     // https://github.com/quantcast/nginx-layer-6/pull/3#discussion_r1006215672
