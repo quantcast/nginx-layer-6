@@ -3,9 +3,9 @@
 #include <ngx_string.h>
 #include <ngx_event.h>
 
-void presentation_http_request_close_connection(ngx_connection_t *c);
+#include "httplite_request.h"
 
-void presentation_http_request_handler(ngx_event_t *rev)
+void httplite_request_handler(ngx_event_t *rev)
 {
     size_t                     size;
     ssize_t                    n;
@@ -18,12 +18,12 @@ void presentation_http_request_handler(ngx_event_t *rev)
 
     if (rev->timedout) {
         ngx_log_error(NGX_LOG_INFO, c->log, NGX_ETIMEDOUT, "client timed out");
-        presentation_http_request_close_connection(c);
+        httplite_request_close_connection(c);
         return;
     }
 
     if (c->close) {
-        presentation_http_request_close_connection(c);
+        httplite_request_close_connection(c);
         return;
     }
 
@@ -34,7 +34,7 @@ void presentation_http_request_handler(ngx_event_t *rev)
     if (b == NULL) {
         b = ngx_create_temp_buf(c->pool, size);
         if (b == NULL) {
-            presentation_http_request_close_connection(c);
+            httplite_request_close_connection(c);
             return;
         }
 
@@ -43,7 +43,7 @@ void presentation_http_request_handler(ngx_event_t *rev)
     } else if (b->start == NULL) {
         b->start = ngx_palloc(c->pool, size);
         if (b->start == NULL) {
-            presentation_http_request_close_connection(c);
+            httplite_request_close_connection(c);
             return;
         }
 
@@ -61,7 +61,7 @@ void presentation_http_request_handler(ngx_event_t *rev)
         }
 
         if (ngx_handle_read_event(rev, 0) != NGX_OK) {
-            presentation_http_request_close_connection(c);
+            httplite_request_close_connection(c);
             return;
         }
 
@@ -77,14 +77,14 @@ void presentation_http_request_handler(ngx_event_t *rev)
     }
 
     if (n == NGX_ERROR) {
-        presentation_http_request_close_connection(c);
+        httplite_request_close_connection(c);
         return;
     }
 
     if (n == 0) {
         ngx_log_error(NGX_LOG_INFO, c->log, 0,
                       "client closed connection");
-        presentation_http_request_close_connection(c);
+        httplite_request_close_connection(c);
         return;
     }
 
@@ -95,7 +95,7 @@ void presentation_http_request_handler(ngx_event_t *rev)
     ngx_reusable_connection(c, 0);
 }
 
-void presentation_http_request_close_connection(ngx_connection_t *c)
+void httplite_request_close_connection(ngx_connection_t *c)
 {
     ngx_pool_t  *pool;
 
@@ -113,7 +113,7 @@ void presentation_http_request_close_connection(ngx_connection_t *c)
 
 // TODO: this function should parse out the request body from the request buffer
 // not sure if these are all the necessary parameters
-ngx_str_t presentation_parse_http_request_body(ngx_buf_t request_buffer) {
+ngx_str_t httplite_parse_http_request_body(ngx_buf_t request_buffer) {
     ngx_str_t str = ngx_string("");
     return str;
 }

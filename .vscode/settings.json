@@ -1,13 +1,15 @@
 {
   "files.associations": {
-    "presentation_http_server.h": "c",
+    "httplite_http_server.h": "c",
     "ngx_core.h": "c",
     "string.h": "c",
     "ngx_config.h": "c",
     "nginx.h": "c",
     "typeinfo": "c",
     "ngx_event_connect.h": "c",
-    "presentation_http_request.h": "c"
+    "httplite_http_request.h": "c",
+    "httplite_module.h": "c",
+    "httplite_module_configuration.h": "c"
   },
   "C_Cpp.errorSquiggles": "Disabled"
 }

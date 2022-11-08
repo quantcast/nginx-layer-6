@@ -4,16 +4,16 @@
 #include <ngx_http.h>
 #include <string.h>
 #include <ngx_socket.h>
-#include "presentation_http_request.h"
 
-#include "presentation_http_server.h"
+#include "httplite_request.h"
+#include "httplite_server.h"
 
-void presentation_http_server_close_connection(ngx_connection_t *c);
-void presentation_http_server_empty_handler(ngx_event_t *wev);
-u_char* presentation_http_server_log_error(ngx_log_t *log, u_char *buf, size_t len);
-void presentation_http_server_init_connection(ngx_connection_t *c);
+void httplite_http_server_close_connection(ngx_connection_t *c);
+void httplite_http_server_empty_handler(ngx_event_t *wev);
+u_char* httplite_http_server_log_error(ngx_log_t *log, u_char *buf, size_t len);
+void httplite_http_server_init_connection(ngx_connection_t *c);
 
-ngx_int_t presentation_http_server_init_listening(ngx_conf_t *cf, ngx_int_t port)
+ngx_int_t httplite_http_server_init_listening(ngx_conf_t *cf, ngx_int_t port)
 {
     ngx_listening_t *ls;
     struct sockaddr_in *socket_address;
@@ -40,12 +40,12 @@ ngx_int_t presentation_http_server_init_listening(ngx_conf_t *cf, ngx_int_t port
 
     ls->addr_ntop = 1;
 
-    ls->handler = presentation_http_server_init_connection;
+    ls->handler = httplite_http_server_init_connection;
     ls->pool_size = 512;
 
     ls->logp = cf->log;
     ls->log.data = &ls->addr_text;
-    ls->log.handler = presentation_http_server_log_error;
+    ls->log.handler = httplite_http_server_log_error;
 
     ls->backlog = -1;
     ls->rcvbuf = SO_RCVBUF;
@@ -56,20 +56,20 @@ ngx_int_t presentation_http_server_init_listening(ngx_conf_t *cf, ngx_int_t port
     return NGX_OK;
 }
 
-void presentation_http_server_init_connection(ngx_connection_t *c)
+void httplite_http_server_init_connection(ngx_connection_t *c)
 {
     ngx_event_t               *rev;
 
     c->log->connection = c->number;
-    c->log->handler = presentation_http_server_log_error;
+    c->log->handler = httplite_http_server_log_error;
     c->log->data = NULL;
     c->log->action = "waiting for request";
 
     c->log_error = NGX_ERROR_INFO;
 
     rev = c->read;
-    rev->handler = presentation_http_request_handler;
-    c->write->handler = presentation_http_server_empty_handler;
+    rev->handler = httplite_request_handler;
+    c->write->handler = httplite_http_server_empty_handler;
 
     if (rev->ready) {
         /* the deferred accept(), iocp */
@@ -88,17 +88,17 @@ void presentation_http_server_init_connection(ngx_connection_t *c)
     ngx_reusable_connection(c, 1);
 
     if (ngx_handle_read_event(rev, 0) != NGX_OK) {
-        presentation_http_request_close_connection(c);
+        httplite_request_close_connection(c);
         return;
     }
 }
 
-u_char* presentation_http_server_log_error(ngx_log_t *log, u_char *buf, size_t len)
+u_char* httplite_http_server_log_error(ngx_log_t *log, u_char *buf, size_t len)
 {
    return NGX_OK;
 }
 
-void presentation_http_server_empty_handler(ngx_event_t *wev)
+void httplite_http_server_empty_handler(ngx_event_t *wev)
 {
     ngx_log_debug0(NGX_LOG_DEBUG_HTTP, wev->log, 0, "http empty handler");
 

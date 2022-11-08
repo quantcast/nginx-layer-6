@@ -1,2 +1,2 @@
 ngx_addon_name=lay6
-CORE_MODULES="$CORE_MODULES presentation_module presentation_http_module"
+CORE_MODULES="$CORE_MODULES httplite_module httplite_http_module"
