@@ -11,8 +11,6 @@ ngx_int_t httplite_http_block_initialization(ngx_conf_t *configuration) {
             httplite_module
         );
     
-    printf("initalization: %lu\n", httplite_main_configuration->port);
-
     return NGX_OK;
 }
 
