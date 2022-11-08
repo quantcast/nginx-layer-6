@@ -19,20 +19,21 @@ ngx_int_t httplite_http_server_init_listening(ngx_conf_t *cf, ngx_int_t port)
     struct sockaddr_in *socket_address;
     size_t socket_length = sizeof(struct sockaddr_in);
 
-    ngx_str_t raw_address = ngx_string("127.0.0.1");
-
     socket_address = ngx_pcalloc(cf->pool, socket_length);
+    
     if (socket_address == NULL) {
         printf("Failed to allocate socket address\n");
         return NGX_ERROR;
     }
+    
     ngx_memzero(socket_address, socket_length);
     socket_address->sin_family = AF_INET;
     socket_address->sin_port = port;
     socket_address->sin_len = socket_length;
-    socket_address->sin_addr.s_addr = ngx_inet_addr(raw_address.data, raw_address.len);
+    socket_address->sin_addr.s_addr = INADDR_ANY;
     
     ls = ngx_create_listening(cf, (struct sockaddr*)socket_address, socket_length);
+    
     if (ls == NULL) {
         printf("Failed to create listening socket\n");
         return NGX_ERROR;

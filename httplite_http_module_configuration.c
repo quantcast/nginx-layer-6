@@ -5,12 +5,6 @@
 
 ngx_int_t httplite_http_block_initialization(ngx_conf_t *configuration) {
     // associating configuration with module
-    httplite_main_configuration_t* httplite_main_configuration =
-        httplite_conf_get_module_main_conf(
-            configuration, 
-            httplite_module
-        );
-    
     return NGX_OK;
 }
 

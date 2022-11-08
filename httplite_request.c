@@ -5,6 +5,8 @@
 
 #include "httplite_request.h"
 
+#define BUFFER_SIZE 1024
+
 void httplite_request_handler(ngx_event_t *rev)
 {
     size_t                     size;
@@ -27,12 +29,15 @@ void httplite_request_handler(ngx_event_t *rev)
         return;
     }
 
-    size = 1024;
+    // TODO: Remove and replace with config variable
+    // https://github.com/quantcast/nginx-layer-6/pull/3#discussion_r1014484359
+    size = BUFFER_SIZE;
 
     b = c->buffer;
 
     if (b == NULL) {
         b = ngx_create_temp_buf(c->pool, size);
+
         if (b == NULL) {
             httplite_request_close_connection(c);
             return;
@@ -42,6 +47,7 @@ void httplite_request_handler(ngx_event_t *rev)
 
     } else if (b->start == NULL) {
         b->start = ngx_palloc(c->pool, size);
+
         if (b->start == NULL) {
             httplite_request_close_connection(c);
             return;
@@ -54,7 +60,10 @@ void httplite_request_handler(ngx_event_t *rev)
 
     n = c->recv(c, b->last, size);
 
+    // TODO: Is this a safe assumption? 
+    // https://github.com/quantcast/nginx-layer-6/pull/3#discussion_r1006215672
     if (n == NGX_AGAIN) {
+
         if (!rev->timer_set) {
             ngx_add_timer(rev, 60 * 1000);
             ngx_reusable_connection(c, 1);
