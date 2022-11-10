@@ -8,62 +8,110 @@
 
 void httplite_http_request_close_connection(ngx_connection_t *c);
 
-httplite_request_t *init_httplite_request(ngx_pool_t *pool, size_t size) {
-    httplite_request_t *request = ngx_pcalloc(pool, sizeof(httplite_request_t));
+httplite_list_t *init_httplite_list(ngx_pool_t *pool) {
+    httplite_list_t *list;
+    httplite_node_t *head;
 
-    if (!request) {
+    head->data = ngx_pnalloc(pool, sizeof(httplite_node_t));
+
+    if (!head->data) {
         return NULL;
     }
 
-    request->start = ngx_pnalloc(pool, size);
+    head->filled = 0;
+    head->next = NULL;
 
-    if (!request->start) {
-        ngx_pfree(pool, request);
+    list->pool = pool;
+    list->tail = list->head;
+
+    return list;
+}
+
+httplite_request_t *init_httplite_request(ngx_connection_t *connection) {
+    httplite_request_t *request;
+    request->connection = connection;
+    request->size = 0;
+    request->list = init_httplite_list(connection->pool);
+
+    if (!request->list) {
         return NULL;
     }
 
-    request->last = request->start;
-    request->end = request->start + size;
-    request->pool = pool;
-    request->size = size;
+    // if (!request->slab) {
+    //     return NULL;
+    // }
+
+    // httplite_request_t *request = ngx_pcalloc(pool, sizeof(httplite_request_t));
+
+    // if (!request) {
+    //     return NULL;
+    // }
+
+    // request->start = ngx_pnalloc(pool, size);
+
+    // if (!request->start) {
+    //     ngx_pfree(pool, request);
+    //     return NULL;
+    // }
+
+    // request->last = request->start;
+    // request->end = request->start + size;
+    // request->pool = pool;
+    // request->size = size;
 
     return request;
 }
 
-int httplite_request_realloc(httplite_request_t *request) {
-    u_char *old_request_str = request->start;
-    size_t diff = request->last - request->start;
+int *httplite_add_node(httplite_list_t *list) {
+    httplite_node_t *new_node;
+    new_node->next = NULL;
+    new_node->data = ngx_pnalloc(list->pool, sizeof(httplite_node_t));
 
-    request->start = ngx_pnalloc(request->pool, request->size * 2);
-
-    if (!request->start) {
-        return NGX_DECLINED;
+    if (!new_node->data) {
+        return NGX_ERROR;
     }
 
-    strncpy((char *)request->start, (char *)old_request_str, request->size);
+    list->tail->next = new_node;
+    list->tail = new_node;
+    return 0;
 
-    request->size *= 2;
-    request->last = request->start + diff;
-    request->end = request->start + request->size;
+    // u_char *old_request_str = request->start;
+    // size_t diff = request->last - request->start;
 
-    if (!ngx_pfree(request->pool, old_request_str)) {
-        return NGX_DECLINED;
-    }
+    // request->start = ngx_pnalloc(request->pool, request->size * 2);
 
-    return NGX_OK;
+    // if (!request->start) {
+    //     return NGX_DECLINED;
+    // }
+
+    // strncpy((char *)request->start, (char *)old_request_str, request->size);
+
+    // request->size *= 2;
+    // request->last = request->start + diff;
+    // request->end = request->start + request->size;
+
+    // if (!ngx_pfree(request->pool, old_request_str)) {
+    //     return NGX_DECLINED;
+    // }
+
+    // return NGX_OK;
 }
 
-int httplite_request_free(httplite_request_t *request) {
-    if (!ngx_pfree(request->pool, request->start)) {
-        return NGX_DECLINED;
-    }
+/* I don't think we need a request_free function if the requests are no longer 
+dynamically allocated. Any memory associated with the request in the connection pool
+should get freed when the connection is destroyed. */
 
-    if (!ngx_pfree(request->pool, request)) {
-        return NGX_DECLINED;
-    }
+// int httplite_request_free(httplite_request_t *request) {
+//     if (!ngx_pfree(request->pool, request->start)) {
+//         return NGX_DECLINED;
+//     }
 
-    return NGX_OK;
-}
+//     if (!ngx_pfree(request->pool, request)) {
+//         return NGX_DECLINED;
+//     }
+
+//     return NGX_OK;
+// }
 
 void httplite_http_request_close_connection(ngx_connection_t *c)
 {
@@ -81,6 +129,7 @@ void httplite_http_request_close_connection(ngx_connection_t *c)
     ngx_destroy_pool(pool);
 }
 
+// TODO: update this function to reflect new request structure
 void httplite_request_handler(ngx_event_t *rev) {
     size_t                     size;
     ssize_t                    n;
@@ -105,7 +154,7 @@ void httplite_request_handler(ngx_event_t *rev) {
     // TODO: Remove and replace with config variable
     // https://github.com/quantcast/nginx-layer-6/pull/3#discussion_r1014484359
     size = BUFFER_SIZE;
-    request = init_httplite_request(c->pool, size);
+    request = init_httplite_request(c);
 
     if (request == NULL) {
         ngx_log_error(NGX_LOG_ALERT, c->log, 0, "unable to allocate space for the httplite request struct.");
@@ -113,7 +162,7 @@ void httplite_request_handler(ngx_event_t *rev) {
         return;
     }
     
-    if (request->start == NULL) {
+    if (request->slab == NULL) {
         ngx_log_error(NGX_LOG_ALERT, c->log, 0, "unable to allocate space for the request string.");
         httplite_http_request_close_connection(c);
         return;
@@ -128,7 +177,7 @@ void httplite_request_handler(ngx_event_t *rev) {
      * Remember to clean up memory and resources as you do this (the provided `httplite_request_realloc` and `httplite_request_free`
      * functions should help you do this, but they may or may not have bugs in them).
      */
-    n = c->recv(c, request->last, request->size);
+    n = c->recv(c, request->slab->data, SLAB_SIZE);
 
     // TODO: Is this a safe assumption? 
     // https://github.com/quantcast/nginx-layer-6/pull/3#discussion_r1006215672
