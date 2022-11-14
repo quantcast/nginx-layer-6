@@ -127,7 +127,6 @@ void httplite_request_handler(ngx_event_t *rev) {
      * 
      */
     n = c->recv(c, request->last, size);
-    printf("%s\n", request->start);
 
     // testing measure
     httplite_upstream_t *upstream = httplite_create_upstream(c, "127.0.0.1", 8889);
