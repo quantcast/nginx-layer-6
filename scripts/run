@@ -71,24 +71,7 @@ done
 
 CURRENT_DIR=$(pwd)
 
-# regenerate the configure file
-if [ $CONFIGURE == 1 ]
-then
-    echo "Generating the config file"
-    if [ $QUIET == 0 ]
-    then
-        zsh $CURRENT_DIR/scripts/generate-config
-    else
-        zsh $CURRENT_DIR/scripts/generate-config >> /dev/null
-    fi
-fi
-
-if [ -z "$NGINX_PATH" ]
-then
-    cd ../../nginx
-else
-    cd $NGINX_PATH
-fi
+cd $NGINX_PATH
 
 # if there is no output directory, then we must reconfigure
 if [[ ! -d objs ]] || [[ ! -f Makefile ]]
