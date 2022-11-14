@@ -1,10 +1,10 @@
 #include <nginx.h>
 #include <ngx_core.h>
 
-#include "presentation_upstream.h"
+#include "httplite_upstream.h"
 
-presentation_upstream_t *presentation_create_upstream(ngx_connection_t *connection, char *address, ngx_int_t port) {
-    presentation_upstream_t *upstream = ngx_pcalloc(connection->pool, sizeof(presentation_upstream_t));
+httplite_upstream_t *httplite_create_upstream(ngx_connection_t *connection, char *address, ngx_int_t port) {
+    httplite_upstream_t *upstream = ngx_pcalloc(connection->pool, sizeof(httplite_upstream_t));
     if (!upstream) {
         return NULL;
     }
@@ -40,25 +40,25 @@ presentation_upstream_t *presentation_create_upstream(ngx_connection_t *connecti
     return upstream;
 }
 
-ngx_int_t presentation_free_upstream(presentation_upstream_t* upstream) {
+ngx_int_t httplite_free_upstream(httplite_upstream_t* upstream) {
     ngx_pfree(upstream->pool, upstream->peer.name->data);
     ngx_pfree(upstream->pool, upstream->peer.name);
 
     if (ngx_pfree(upstream->pool, upstream) != NGX_OK) {
-        fprintf(stderr, "Failed to deallocate presentation upstream\n");
+        fprintf(stderr, "Failed to deallocate httplite upstream\n");
         return NGX_DECLINED;
     }
     return NGX_OK;
 }
 
-void presentation_initialize_upstream_connection(presentation_upstream_t *upstream) {
+void httplite_initialize_upstream_connection(httplite_upstream_t *upstream) {
     if(ngx_event_connect_peer(&upstream->peer) != NGX_OK) {
         fprintf(stderr, "Something went wrong when creating connection.\n");
         ngx_pfree(upstream->pool, upstream);
     }
 }
 
-void presentation_send_request_to_upstream(presentation_upstream_t *upstream, presentation_request_t *request) {
+void httplite_send_request_to_upstream(httplite_upstream_t *upstream, httplite_request_t *request) {
     ngx_connection_t *connection = upstream->peer.connection;
     connection->send(connection, request->start, request->size);
 }

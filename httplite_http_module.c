@@ -1,35 +1,35 @@
 #include <nginx.h>
 #include <ngx_core.h>
 #include <ngx_config.h>
-#include "presentation_module_configuration.h"
-#include "presentation_http_module_configuration.h"
+#include "httplite_module_configuration.h"
+#include "httplite_http_module_configuration.h"
 
-#include "presentation_http_module.h"
+#include "httplite_http_module.h"
 
-ngx_command_t presentation_http_commands[] = {
+ngx_command_t httplite_http_commands[] = {
     {
         ngx_string(PORT_KEYWORD),
-        PRESENTATION_MAIN_CONFIGURATION | NGX_CONF_TAKE1,
+        HTTPLITE_MAIN_CONFIGURATION | NGX_CONF_TAKE1,
         ngx_conf_set_num_slot,
-        PRESENTATION_MAIN_CONFIGURATION_OFFSET,
+        HTTPLITE_MAIN_CONFIGURATION_OFFSET,
         0,
         NULL 
     }
 };
 
-presentation_module_t presentation_http_module_context = {
+httplite_module_t httplite_http_module_context = {
   NULL,                                     /* preconfiguration */
-  presentation_http_block_initialization,                         /* postconfiguration */
-  presentation_http_block_create_main_configuration,             /* create main configuration */
+  httplite_http_block_initialization,                         /* postconfiguration */
+  httplite_http_block_create_main_configuration,             /* create main configuration */
   NULL,                                     /* init main configuration */
 };
 
 /* options for the module */
-ngx_module_t presentation_http_module = {
+ngx_module_t httplite_http_module = {
   NGX_MODULE_V1,
-  &presentation_http_module_context,  /* module context */
-  presentation_http_commands,         /* module directives */
-  PRESENTATION_MODULE,                /* module type */
+  &httplite_http_module_context,  /* module context */
+  httplite_http_commands,         /* module directives */
+  HTTPLITE_MODULE,                /* module type */
   NULL,                               /* init master */
   NULL,                               /* init module */
   NULL,                               /* init process */

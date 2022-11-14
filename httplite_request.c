@@ -3,11 +3,11 @@
 #include <ngx_string.h>
 #include <ngx_event_connect.h>
 
-#include "presentation_http_request.h"
-#include "presentation_upstream.h"
+#include "httplite_request.h"
+#include "httplite_upstream.h"
 
-presentation_request_t *init_presentation_request(ngx_pool_t *pool, size_t size) {
-    presentation_request_t *request = ngx_pcalloc(pool, sizeof(presentation_request_t));
+httplite_request_t *init_httplite_request(ngx_pool_t *pool, size_t size) {
+    httplite_request_t *request = ngx_pcalloc(pool, sizeof(httplite_request_t));
 
     if (!request) {
         return NULL;
@@ -28,7 +28,7 @@ presentation_request_t *init_presentation_request(ngx_pool_t *pool, size_t size)
     return request;
 }
 
-int presentation_request_realloc(presentation_request_t *request) {
+int httplite_request_realloc(httplite_request_t *request) {
     u_char *old_request_str = request->start;
     size_t diff = request->end - request->start;
 
@@ -51,7 +51,7 @@ int presentation_request_realloc(presentation_request_t *request) {
     return NGX_OK;
 }
 
-int presentation_request_free(presentation_request_t *request) {
+int httplite_request_free(httplite_request_t *request) {
     if (!ngx_pfree(request->pool, request->start)) {
         return NGX_DECLINED;
     }
@@ -63,7 +63,7 @@ int presentation_request_free(presentation_request_t *request) {
     return NGX_OK;
 }
 
-void presentation_http_request_close_connection(ngx_connection_t *c)
+void httplite_request_close_connection(ngx_connection_t *c)
 {
     ngx_pool_t  *pool;
 
@@ -79,10 +79,10 @@ void presentation_http_request_close_connection(ngx_connection_t *c)
     ngx_destroy_pool(pool);
 }
 
-void presentation_http_request_handler(ngx_event_t *rev) {
+void httplite_request_handler(ngx_event_t *rev) {
     size_t                     size;
     ssize_t                    n;
-    presentation_request_t    *request;
+    httplite_request_t    *request;
     ngx_connection_t          *c;
 
     c = rev->data;
@@ -91,27 +91,27 @@ void presentation_http_request_handler(ngx_event_t *rev) {
 
     if (rev->timedout) {
         ngx_log_error(NGX_LOG_INFO, c->log, NGX_ETIMEDOUT, "client timed out");
-        presentation_http_request_close_connection(c);
+        httplite_request_close_connection(c);
         return;
     }
 
     if (c->close) {
-        presentation_http_request_close_connection(c);
+        httplite_request_close_connection(c);
         return;
     }
 
     size = 1024;
-    request = init_presentation_request(c->pool, size);
+    request = init_httplite_request(c->pool, size);
 
     if (request == NULL) {
-        ngx_log_error(NGX_LOG_ALERT, c->log, 0, "unable to allocate space for the presentation request struct.");
-        presentation_http_request_close_connection(c);
+        ngx_log_error(NGX_LOG_ALERT, c->log, 0, "unable to allocate space for the httplite request struct.");
+        httplite_request_close_connection(c);
         return;
     }
     
     if (request->start == NULL) {
         ngx_log_error(NGX_LOG_ALERT, c->log, 0, "unable to allocate space for the request string.");
-        presentation_http_request_close_connection(c);
+        httplite_request_close_connection(c);
         return;
     }
 
@@ -121,17 +121,18 @@ void presentation_http_request_handler(ngx_event_t *rev) {
      * to the current request), and the upper limit on the size to read.
      * 
      * It will return an integer (n) which tells us how many bytes have been read. We want to continue to read until we have the full request.
-     * Remember to clean up memory and resources as you do this (the provided `presentation_request_realloc` and `presentation_request_free`
+     * Remember to clean up memory and resources as you do this (the provided `httplite_request_realloc` and `httplite_request_free`
      * functions should help you do this, but they may or may not have bugs in them).
      * 
      * 
      */
     n = c->recv(c, request->last, size);
+    printf("%s\n", request->start);
 
     // testing measure
-    presentation_upstream_t *upstream = presentation_create_upstream(c, "127.0.0.1", 8889);
-    presentation_initialize_upstream_connection(upstream);
-    presentation_send_request_to_upstream(upstream, request);
+    httplite_upstream_t *upstream = httplite_create_upstream(c, "127.0.0.1", 8889);
+    httplite_initialize_upstream_connection(upstream);
+    httplite_send_request_to_upstream(upstream, request);
 
     if (n == NGX_AGAIN) {
         if (!rev->timer_set) {
@@ -140,7 +141,7 @@ void presentation_http_request_handler(ngx_event_t *rev) {
         }
 
         if (ngx_handle_read_event(rev, 0) != NGX_OK) {
-            presentation_http_request_close_connection(c);
+            httplite_request_close_connection(c);
             return;
         }
 
@@ -148,14 +149,14 @@ void presentation_http_request_handler(ngx_event_t *rev) {
     }
 
     if (n == NGX_ERROR) {
-        presentation_http_request_close_connection(c);
+        httplite_request_close_connection(c);
         return;
     }
 
     if (n == 0) {
         ngx_log_error(NGX_LOG_INFO, c->log, 0,
                       "client closed connection");
-        presentation_http_request_close_connection(c);
+        httplite_request_close_connection(c);
         return;
     }
 
@@ -168,7 +169,7 @@ void presentation_http_request_handler(ngx_event_t *rev) {
 
 // TODO: this function should parse out the request body from the request buffer
 // not sure if these are all the necessary parameters
-ngx_str_t presentation_parse_http_request_body(ngx_buf_t request_buffer) {
+ngx_str_t httplite_parse_request_body(ngx_buf_t request_buffer) {
     ngx_str_t str = ngx_string("");
     return str;
 }
