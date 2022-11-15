@@ -1,0 +1,122 @@
+# Simple file to help with reconfiguring/recompiling
+
+# clean up other nginx processes before starting another
+pkill nginx
+
+# get NGINX_PATH variable
+source .env
+
+CONFIGURE=0
+VERBOSE=0
+QUIET=0
+REMOVE_OUT=1
+
+# either the absolute path to the module or the relative path from nginx to the module
+# do not have to change if the run file is in the module
+MODULE=$(pwd)
+
+# Enter absolute Nginx path here or provide it as an argument below
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -q|--quiet)
+            QUIET=1
+            VERBOSE=0
+            shift
+            ;;
+        -n|--nginx)
+            shift
+            NGINX_PATH=$1
+            shift
+            ;;
+        -v|--verbose)
+            VERBOSE=1
+            shift
+            ;;
+        -c|--configure)
+            CONFIGURE=1
+            shift
+            ;;
+        -m|--module)
+            shift
+            MODULE=$1
+            shift
+            ;;
+        -p|--preserve)
+            REMOVE_OUT=0
+            shift
+            ;;
+        -h|--help)
+            echo 'Usage: ./run [options]'
+            echo "    --configure (-c) - Reconfigures nginx"
+            echo "    --module    (-m) - Either the absolute path to the module or the relative path from nginx to the module (default \"../nginx-layer-6\")"
+            echo "    --preserve  (-p) - Preserve the out/ directory (does not delete between runs)"
+            echo "    --verbose   (-v) - Shows the make output"
+            echo "    --quiet     (-q) - Silence all output"
+            shift
+            exit 0
+            ;;
+        -*|--*)
+            echo "Unknown option $1"
+            echo 'Usage: ./run [options]'
+            echo "    --configure (-c) - Reconfigures nginx"
+            echo "    --module    (-m) - Either the absolute path to the module or the relative path from nginx to the module (default \"../nginx-layer-6\")"
+            echo "    --preserve  (-p) - Preserve the out/ directory (does not delete between runs)"
+            echo "    --verbose   (-v) - Shows the make output"
+            echo "    --quiet     (-q) - Silence all output"
+            exit 1
+            ;;
+    esac
+done
+
+cd $NGINX_PATH
+
+# if there is no output directory, then we must reconfigure
+if [[ ! -d objs ]] || [[ ! -f Makefile ]]
+then
+    CONFIGURE=1
+fi
+
+# logic for configure command
+if [ $CONFIGURE == 1 ]
+then
+    echo "Running auto/configure"
+    if [ $VERBOSE == 1 ]
+    then
+
+        auto/configure --prefix="$(pwd)/out" --without-http_rewrite_module --add-module="$MODULE"
+    else
+        auto/configure --prefix="$(pwd)/out" --without-http_rewrite_module --add-module="$MODULE" >> /dev/null
+    fi
+fi
+
+# logic for remove out command
+if [ $REMOVE_OUT == 1 ] && [ -d out ]
+then
+    rm -r out
+else
+    if [ $CONFIGURE != 1 ]
+    then
+        echo "Preserving out/ directory"
+    fi
+fi
+
+echo "Running make"
+# logic for verbose command
+if [ $VERBOSE == 1 ]
+then
+    make install
+    make
+else
+    make install >> /dev/null;
+    make >> /dev/null;
+fi
+
+echo "Starting nginx"
+# logic for quiet command
+if [ $QUIET == 1 ]
+then
+    out/sbin/nginx >> /dev/null
+else
+    out/sbin/nginx
+fi

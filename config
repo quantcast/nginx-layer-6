@@ -1,0 +1,8 @@
+ngx_addon_name=httplite
+CORE_MODULES="$CORE_MODULES httplite_module httplite_http_module"
+
+_addon_deps=$(ls $ngx_addon_dir/*.h | tr '\n' ' ')
+_addon_sources=$(ls $ngx_addon_dir/*.c | tr '\n' ' ')
+
+NGX_ADDON_DEPS="$NGX_ADDON_DEPS $_addon_deps"
+NGX_ADDON_SRCS="$NGX_ADDON_SRCS $_addon_sources"
