@@ -89,7 +89,7 @@ void httplite_http_server_init_connection(ngx_connection_t *c)
     ngx_reusable_connection(c, 1);
 
     if (ngx_handle_read_event(rev, 0) != NGX_OK) {
-        httplite_request_close_connection(c);
+        ngx_httplite_close_connection(c);
         return;
     }
 }
