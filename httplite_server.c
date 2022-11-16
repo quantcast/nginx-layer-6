@@ -8,11 +8,9 @@
 #include "httplite_request.h"
 #include "httplite_server.h"
 
-void httplite_http_server_close_connection(ngx_connection_t *c);
 void httplite_http_server_empty_handler(ngx_event_t *wev);
 u_char* httplite_http_server_log_error(ngx_log_t *log, u_char *buf, size_t len);
 void httplite_http_server_init_connection(ngx_connection_t *c);
-void httplite_http_server_close_connection(ngx_connection_t *c);
 
 ngx_int_t httplite_http_server_init_listening(ngx_conf_t *cf, ngx_int_t port)
 {
@@ -90,30 +88,14 @@ void httplite_http_server_init_connection(ngx_connection_t *c)
     ngx_reusable_connection(c, 1);
 
     if (ngx_handle_read_event(rev, 0) != NGX_OK) {
-        httplite_request_close_connection(c);
+        ngx_httplite_close_connection(c);
         return;
     }
 }
 
-void httplite_http_server_close_connection(ngx_connection_t *c)
-{
-    ngx_pool_t  *pool;
-
-    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, c->log, 0,
-                   "close http connection: %d", c->fd);
-
-    c->destroyed = 1;
-
-    pool = c->pool;
-
-    ngx_close_connection(c);
-
-    ngx_destroy_pool(pool);
-}
-
 u_char* httplite_http_server_log_error(ngx_log_t *log, u_char *buf, size_t len)
 {
-   return NGX_OK;
+    return NGX_OK;
 }
 
 void httplite_http_server_empty_handler(ngx_event_t *wev)
