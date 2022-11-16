@@ -1,5 +1,5 @@
-#ifndef PRESENTATION_UPSTREAM_H
-#define PRESENTATION_UPSTREAM_H
+#ifndef HTTPLITE_UPSTREAM_H
+#define HTTPLITE_UPSTREAM_H
 
 // TODO: define upstream struct
 

@@ -1,22 +1,8 @@
-ngx_addon_name=lay6
-CORE_MODULES="$CORE_MODULES presentation_module presentation_http_module"
-NGX_ADDON_DEPS="$NGX_ADDON_DEPS \
-	$ngx_addon_dir/presentation_http_module.h \
-	$ngx_addon_dir/presentation_http_module_configuration.h \
-	$ngx_addon_dir/presentation_http_request.h \
-	$ngx_addon_dir/presentation_http_server.h \
-	$ngx_addon_dir/presentation_load_balancer.h \
-	$ngx_addon_dir/presentation_module.h \
-	$ngx_addon_dir/presentation_module_configuration.h \
-	$ngx_addon_dir/presentation_upstream.h \
-"
-NGX_ADDON_SRCS="$NGX_ADDON_SRCS \
-	$ngx_addon_dir/presentation_http_module.c \
-	$ngx_addon_dir/presentation_http_module_configuration.c \
-	$ngx_addon_dir/presentation_http_request.c \
-	$ngx_addon_dir/presentation_http_server.c \
-	$ngx_addon_dir/presentation_load_balancer.c \
-	$ngx_addon_dir/presentation_module.c \
-	$ngx_addon_dir/presentation_module_configuration.c \
-	$ngx_addon_dir/presentation_upstream.c \
-"
+ngx_addon_name=httplite
+CORE_MODULES="$CORE_MODULES httplite_module httplite_http_module"
+
+_addon_deps=$(ls $ngx_addon_dir/*.h | tr '\n' ' ')
+_addon_sources=$(ls $ngx_addon_dir/*.c | tr '\n' ' ')
+
+NGX_ADDON_DEPS="$NGX_ADDON_DEPS $_addon_deps"
+NGX_ADDON_SRCS="$NGX_ADDON_SRCS $_addon_sources"

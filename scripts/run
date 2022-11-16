@@ -69,18 +69,6 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# regenerate the configure file
-if [ $CONFIGURE == 1 ]
-then
-    echo "Generating the config file"
-    if [ $QUIET == 0 ]
-    then
-        ./scripts/generate-config
-    else
-        ./scripts/generate-config >> /dev/null
-    fi
-fi
-
 cd $NGINX_PATH
 
 # if there is no output directory, then we must reconfigure
