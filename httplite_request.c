@@ -72,6 +72,7 @@ void ngx_httplite_close_connection(ngx_connection_t *c)
 }
 
 // TODO: update this function to reflect new request structure
+// Will be done by J.P
 void httplite_request_handler(ngx_event_t *rev) {
     ssize_t                    n;
     httplite_request_list_t    list;
