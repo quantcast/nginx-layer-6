@@ -5,10 +5,10 @@
 
 #include "httplite_request.h"
 
-#define LENGTH_HEADER "\nContent-Length:"
-#define LENGTH_HEADER_SIZE 16
+#define LENGTH_HEADER "\nContent-Length: "
+#define LENGTH_HEADER_SIZE strlen(LENGTH_HEADER)
 #define HEADER_BODY_SEPARATOR "\r\n\r\n"
-#define HEADER_BODY_SEPARATOR_SIZE 4
+#define HEADER_BODY_SEPARATOR_SIZE strlen(HEADER_BODY_SEPARATOR)
 
 
 httplite_request_list_t httplite_init_list(ngx_connection_t *connection) {
@@ -158,6 +158,7 @@ void httplite_request_handler(ngx_event_t *rev) {
 
     n = recv_wrapper(c, curr, rev);
 
+
     if (n <= 0) {
         ngx_log_error(NGX_LOG_ALERT, c->log, 0, "failed recv.");
         return;
@@ -190,28 +191,36 @@ void httplite_request_handler(ngx_event_t *rev) {
 
 ssize_t find_request_length(httplite_request_slab_t *slab) {
     u_char *str, *header, *end_ptr;
-    size_t i, header_size;
+    size_t header_size, l;
     ssize_t body_size;
 
     str = slab->buffer;
-    header = ngx_strcasestrn(str, LENGTH_HEADER, LENGTH_HEADER_SIZE);
+    header = ngx_strlcasestrn(str, str + slab->size, (u_char*) LENGTH_HEADER, LENGTH_HEADER_SIZE - 1);
+    /* From nginx documentation:
+    *       ngx_strlcasestrn() is intended to search for static substring
+    *       with known length in string until the argument last. The argument n
+    *       must be length of the second substring - 1.
+    */
 
     if (header == NULL) {
         return NGX_ERROR;
     }
 
     header += LENGTH_HEADER_SIZE;
-    size_t l = 0;
+    l = 0;
 
     /* find size of substring containing value after the header */
-    while (str[i + l] != '\r' && str[i + l] != '\n') {
+    while (*(header + l) != '\r' && *(header + l) != '\n') {
         ++l;
     }
 
-    body_size = ngx_atosz(&str[i], l);
+    body_size = ngx_atosz(header, l);
+
+    printf("\n\nbody size = %zu", body_size);
+    fflush(stdout);
 
     /* find index of header/body separator */ 
-    end_ptr = (u_char*) ngx_strstr(&str[i], HEADER_BODY_SEPARATOR);
+    end_ptr = (u_char*) ngx_strstr(header + l, HEADER_BODY_SEPARATOR);
             
     if (end_ptr == NULL) {
         return NGX_ERROR;
