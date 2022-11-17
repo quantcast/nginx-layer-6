@@ -35,4 +35,7 @@ httplite_request_slab_t *httplite_add_node(httplite_request_list_t list);
 void httplite_request_handler(ngx_event_t *rev);
 void ngx_httplite_close_connection(ngx_connection_t *c);
 
+ssize_t find_request_length(httplite_request_slab_t *slab);
+size_t recv_wrapper(ngx_connection_t *c, httplite_request_slab_s *request, ngx_event_t *rev);
+
 #endif

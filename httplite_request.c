@@ -6,7 +6,10 @@
 #include "httplite_request.h"
 
 #define LENGTH_HEADER "Content-Length: "
+#define LENGTH_HEADER_SIZE 16
 #define HEADER_BODY_SEPARATOR "\r\n\r\n"
+#define HEADER_BODY_SEPARATOR_SIZE 8
+
 
 httplite_request_list_t httplite_init_list(ngx_connection_t *connection) {
     httplite_request_list_t list = { 0 };
@@ -142,48 +145,77 @@ void httplite_request_handler(ngx_event_t *rev) {
     }
 }
 
-ssize_t find_request_length(presentation_request_t *request) {
-    u_char* str;
-    size_t i, str_size, length_header_size, separator_size, header_size;
+size_t recv_wrapper(ngx_connection_t *c, presentation_request_t *request, ngx_event_t *rev) {
+    int n;
+    
+    n = c->recv(c, request->last, request->size);
 
-    i = 0;
-    str = request->start;
-    str_size = request->last - request->start + 1;
-    length_header_size = ngx_strlen(LENGTH_HEADER);
-    separator_size = ngx_strlen(HEADER_BODY_SEPARATOR);
-
-    /* iterate through each char in headers */
-    while (i < str_size) {                                          
-        if (str[i] != '\n') {
-            ++i;
-            continue;
+    if (n == NGX_AGAIN) {
+        if (!rev->timer_set) {
+            ngx_add_timer(rev, 60 * 1000);
+            ngx_reusable_connection(c, 1);
         }
-        ++i;
 
-        /* at each newline, check the following header */
-        if (ngx_strncmp(&str[i], LENGTH_HEADER, length_header_size) == 0) {     
-            i += length_header_size;
-            size_t l = 0;
+        if (ngx_handle_read_event(rev, 0) != NGX_OK) {
+            presentation_http_request_close_connection(c);
+            return n;
+        }
 
-            /* find size of substring containing value after the header */
-            while (str[i + l] != '\r' && str[i + l] != '\n') {
-                ++l;
-            }
+        return n;
+    }
 
-            ssize_t body_size = ngx_atosz(&str[i], l);
+    if (n == NGX_ERROR) {
+        presentation_http_request_close_connection(c);
+        return n;
+    }
 
-            /* find index of header/body separator */ 
-            u_char* end_ptr = (u_char*) ngx_strstr(&str[i], HEADER_BODY_SEPARATOR);
+    if (n == NGX_OK) {
+        ngx_log_error(NGX_LOG_INFO, c->log, 0,
+                      "client closed connection");
+        presentation_http_request_close_connection(c);
+        return n;
+    }
+
+    request->last += n;
+
+    c->log->action = "reading client request line";
+
+    ngx_reusable_connection(c, 0);
+
+    return n;
+}
+
+ssize_t find_request_length(httplite_request_slab_t *slab) {
+    u_char *str, *header, *end_ptr;
+    size_t i, header_size;
+    ssize_t body_size;
+
+    str = slab->buffer;
+    header = ngx_strcasestrn(str, LENGTH_HEADER, LENGTH_HEADER_SIZE);
+
+    if (header == NULL) {
+        return NGX_ERROR;
+    }
+
+    header += LENGTH_HEADER_SIZE;
+    size_t l = 0;
+
+    /* find size of substring containing value after the header */
+    while (str[i + l] != '\r' && str[i + l] != '\n') {
+        ++l;
+    }
+
+    body_size = ngx_atosz(&str[i], l);
+
+    /* find index of header/body separator */ 
+    end_ptr = (u_char*) ngx_strstr(&str[i], HEADER_BODY_SEPARATOR);
             
-            if (end_ptr == NULL) {
-                return NGX_ERROR;
-            }
-            else {
-                request->body = end_ptr + separator_size;
-                header_size = request->body - str;
-                return body_size + header_size;
-            }
-        }
+    if (end_ptr == NULL) {
+        return NGX_ERROR;
+    }
+    else {
+        header_size = end_ptr + HEADER_BODY_SEPARATOR_SIZE - str;
+        return body_size + header_size;
     }
 
     return NGX_ERROR;
