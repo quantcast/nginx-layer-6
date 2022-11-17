@@ -5,6 +5,9 @@
 
 #include "httplite_request.h"
 
+#define LENGTH_HEADER "Content-Length: "
+#define HEADER_BODY_SEPARATOR "\r\n\r\n"
+
 httplite_request_list_t httplite_init_list(ngx_connection_t *connection) {
     httplite_request_list_t list = { 0 };
 
@@ -118,46 +121,95 @@ void httplite_request_handler(ngx_event_t *rev) {
      * Remember to clean up memory and resources as you do this (the provided `httplite_request_realloc` and `httplite_request_free`
      * functions should help you do this, but they may or may not have bugs in them).
      */
-    n = c->recv(c, curr->buffer, SLAB_SIZE);
-    curr->size = n;
+    /* receive headers into struct */
 
-    // TODO: Is this a safe assumption? 
-    // https://github.com/quantcast/nginx-layer-6/pull/3#discussion_r1006215672
-    if (n == NGX_AGAIN) {
+    request = init_presentation_request(c->pool, REQUEST_SIZE);
 
-        if (!rev->timer_set) {
-            ngx_add_timer(rev, 60 * 1000);
-            ngx_reusable_connection(c, 1);
+    if (request == NULL) {
+        ngx_log_error(NGX_LOG_ALERT, c->log, 0, "unable to allocate space for the presentation request struct.");
+        presentation_http_request_close_connection(c);
+        return;
+    }
+    
+    if (request->start == NULL) {
+        ngx_log_error(NGX_LOG_ALERT, c->log, 0, "unable to allocate space for the request string.");
+        presentation_http_request_close_connection(c);
+        return;
+    }
+    
+    n = recv_wrapper(c, request, rev);
+
+    if (n <= 0) {
+        ngx_log_error(NGX_LOG_ALERT, c->log, 0, "failed recv.");
+        return;
+    }
+
+    /* get request length */
+    ssize_t request_length = find_request_length(request);
+    if (request_length < 0) {
+        ngx_log_error(NGX_LOG_ALERT, c->log, 0, "unable to find request length.");
+        return;
+    }
+
+    /* reallocate enough memory to hold request length */
+    presentation_request_realloc(request, (ssize_t) request_length);
+
+    /* call receive function until we have read the entire request */
+    while (n < (ssize_t) request_length && rev->ready) {
+        int m = recv_wrapper(c, request, rev);
+
+        if (m < 0) { 
+            ngx_log_error(NGX_LOG_ALERT, c->log, 0, "failed recv.");
+            return; 
         }
 
-        if (ngx_handle_read_event(rev, 0) != NGX_OK) {
-            ngx_httplite_close_connection(c);
-            return;
-        }
-
-        return;
+        n += m;
     }
-
-    if (n == NGX_ERROR) {
-        ngx_httplite_close_connection(c);
-        return;
-    }
-
-    if (n == 0) {
-        ngx_log_error(NGX_LOG_INFO, c->log, 0,
-                      "client closed connection");
-        ngx_httplite_close_connection(c);
-        return;
-    }
-
-    c->log->action = "reading client request line";
-
-    ngx_reusable_connection(c, 0);
 }
 
-// TODO: this function should parse out the request body from the request buffer
-// not sure if these are all the necessary parameters
-ngx_str_t httplite_parse_http_request_body(ngx_buf_t request_buffer) {
-    ngx_str_t str = ngx_string("");
-    return str;
+ssize_t find_request_length(presentation_request_t *request) {
+    u_char* str;
+    size_t i, str_size, length_header_size, separator_size, header_size;
+
+    i = 0;
+    str = request->start;
+    str_size = request->last - request->start + 1;
+    length_header_size = ngx_strlen(LENGTH_HEADER);
+    separator_size = ngx_strlen(HEADER_BODY_SEPARATOR);
+
+    /* iterate through each char in headers */
+    while (i < str_size) {                                          
+        if (str[i] != '\n') {
+            ++i;
+            continue;
+        }
+        ++i;
+
+        /* at each newline, check the following header */
+        if (ngx_strncmp(&str[i], LENGTH_HEADER, length_header_size) == 0) {     
+            i += length_header_size;
+            size_t l = 0;
+
+            /* find size of substring containing value after the header */
+            while (str[i + l] != '\r' && str[i + l] != '\n') {
+                ++l;
+            }
+
+            ssize_t body_size = ngx_atosz(&str[i], l);
+
+            /* find index of header/body separator */ 
+            u_char* end_ptr = (u_char*) ngx_strstr(&str[i], HEADER_BODY_SEPARATOR);
+            
+            if (end_ptr == NULL) {
+                return NGX_ERROR;
+            }
+            else {
+                request->body = end_ptr + separator_size;
+                header_size = request->body - str;
+                return body_size + header_size;
+            }
+        }
+    }
+
+    return NGX_ERROR;
 }
