@@ -118,7 +118,6 @@ size_t recv_wrapper(ngx_connection_t *c, httplite_request_slab_t *slab, ngx_even
     return n;
 }
 
-// TODO: update this function to reflect new request structure
 void httplite_request_handler(ngx_event_t *rev) {
     ssize_t                    n;
     httplite_request_list_t    list;
