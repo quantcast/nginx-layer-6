@@ -112,31 +112,6 @@ void httplite_request_handler(ngx_event_t *rev) {
         return;
     }
 
-    /**
-     * TODO: This is next line receives a single IP packet of up to size `size` bytes. The `request` is memory allocated on the heap
-     * that can hold the request. The arguments are the connection (c), where to put the data (request->last, since we want to append
-     * to the current request), and the upper limit on the size to read.
-     * 
-     * It will return an integer (n) which tells us how many bytes have been read. We want to continue to read until we have the full request.
-     * Remember to clean up memory and resources as you do this (the provided `httplite_request_realloc` and `httplite_request_free`
-     * functions should help you do this, but they may or may not have bugs in them).
-     */
-    /* receive headers into struct */
-
-    request = init_presentation_request(c->pool, REQUEST_SIZE);
-
-    if (request == NULL) {
-        ngx_log_error(NGX_LOG_ALERT, c->log, 0, "unable to allocate space for the presentation request struct.");
-        presentation_http_request_close_connection(c);
-        return;
-    }
-    
-    if (request->start == NULL) {
-        ngx_log_error(NGX_LOG_ALERT, c->log, 0, "unable to allocate space for the request string.");
-        presentation_http_request_close_connection(c);
-        return;
-    }
-    
     n = recv_wrapper(c, request, rev);
 
     if (n <= 0) {
