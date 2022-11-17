@@ -30,7 +30,7 @@ httplite_request_list_t httplite_init_list(ngx_connection_t *connection);
  * 
  * @returns A pointer to the new slab in the list
 */
-httplite_request_slab_t *httplite_add_node(httplite_request_list_t list);
+httplite_request_slab_t *httplite_add_slab(httplite_request_list_t list);
 
 void httplite_request_handler(ngx_event_t *rev);
 void ngx_httplite_close_connection(ngx_connection_t *c);

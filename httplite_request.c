@@ -5,10 +5,10 @@
 
 #include "httplite_request.h"
 
-#define LENGTH_HEADER "Content-Length: "
+#define LENGTH_HEADER "\nContent-Length:"
 #define LENGTH_HEADER_SIZE 16
 #define HEADER_BODY_SEPARATOR "\r\n\r\n"
-#define HEADER_BODY_SEPARATOR_SIZE 8
+#define HEADER_BODY_SEPARATOR_SIZE 4
 
 
 httplite_request_list_t httplite_init_list(ngx_connection_t *connection) {
@@ -77,6 +77,47 @@ void ngx_httplite_close_connection(ngx_connection_t *c)
     ngx_destroy_pool(pool);
 }
 
+/* Assumes incoming slab is empty (writes to buffer pointer, overwriting anything there) */
+size_t recv_wrapper(ngx_connection_t *c, httplite_request_slab_t *slab, ngx_event_t *rev) {
+    int n;
+    
+    n = c->recv(c, slab->buffer, SLAB_SIZE);
+
+    if (n == NGX_AGAIN) {
+        if (!rev->timer_set) {
+            ngx_add_timer(rev, 60 * 1000);
+            ngx_reusable_connection(c, 1);
+        }
+
+        if (ngx_handle_read_event(rev, 0) != NGX_OK) {
+            ngx_httplite_close_connection(c);
+            return n;
+        }
+
+        return n;
+    }
+
+    if (n == NGX_ERROR) {
+        ngx_httplite_close_connection(c);
+        return n;
+    }
+
+    if (n == NGX_OK) {
+        ngx_log_error(NGX_LOG_INFO, c->log, 0,
+                      "client closed connection");
+        ngx_httplite_close_connection(c);
+        return n;
+    }
+
+    slab->size += n;
+
+    c->log->action = "reading client request line";
+
+    ngx_reusable_connection(c, 0);
+
+    return n;
+}
+
 // TODO: update this function to reflect new request structure
 void httplite_request_handler(ngx_event_t *rev) {
     ssize_t                    n;
@@ -115,7 +156,7 @@ void httplite_request_handler(ngx_event_t *rev) {
         return;
     }
 
-    n = recv_wrapper(c, request, rev);
+    n = recv_wrapper(c, curr, rev);
 
     if (n <= 0) {
         ngx_log_error(NGX_LOG_ALERT, c->log, 0, "failed recv.");
@@ -123,18 +164,20 @@ void httplite_request_handler(ngx_event_t *rev) {
     }
 
     /* get request length */
-    ssize_t request_length = find_request_length(request);
+    ssize_t request_length = find_request_length(curr);
     if (request_length < 0) {
         ngx_log_error(NGX_LOG_ALERT, c->log, 0, "unable to find request length.");
         return;
     }
 
-    /* reallocate enough memory to hold request length */
-    presentation_request_realloc(request, (ssize_t) request_length);
-
     /* call receive function until we have read the entire request */
-    while (n < (ssize_t) request_length && rev->ready) {
-        int m = recv_wrapper(c, request, rev);
+    int m;
+    while (n < request_length && rev->ready) {
+        if (!httplite_add_slab(list)) {
+            ngx_log_error(NGX_LOG_ALERT, c->log, 0, "unable to add slab.");
+            return;
+        }
+        m = recv_wrapper(c, list.tail, rev);
 
         if (m < 0) { 
             ngx_log_error(NGX_LOG_ALERT, c->log, 0, "failed recv.");
@@ -143,46 +186,6 @@ void httplite_request_handler(ngx_event_t *rev) {
 
         n += m;
     }
-}
-
-size_t recv_wrapper(ngx_connection_t *c, presentation_request_t *request, ngx_event_t *rev) {
-    int n;
-    
-    n = c->recv(c, request->last, request->size);
-
-    if (n == NGX_AGAIN) {
-        if (!rev->timer_set) {
-            ngx_add_timer(rev, 60 * 1000);
-            ngx_reusable_connection(c, 1);
-        }
-
-        if (ngx_handle_read_event(rev, 0) != NGX_OK) {
-            presentation_http_request_close_connection(c);
-            return n;
-        }
-
-        return n;
-    }
-
-    if (n == NGX_ERROR) {
-        presentation_http_request_close_connection(c);
-        return n;
-    }
-
-    if (n == NGX_OK) {
-        ngx_log_error(NGX_LOG_INFO, c->log, 0,
-                      "client closed connection");
-        presentation_http_request_close_connection(c);
-        return n;
-    }
-
-    request->last += n;
-
-    c->log->action = "reading client request line";
-
-    ngx_reusable_connection(c, 0);
-
-    return n;
 }
 
 ssize_t find_request_length(httplite_request_slab_t *slab) {
