@@ -53,7 +53,6 @@ httplite_request_slab_t *httplite_add_slab(httplite_request_list_t list) {
         return NULL;
     }
 
-
     list.tail->next = new_slab;
     list.tail = new_slab;
     list.tail->next = NULL;
@@ -214,9 +213,6 @@ ssize_t find_request_length(httplite_request_slab_t *slab) {
     }
 
     body_size = ngx_atosz(header, l);
-
-    printf("\n\nbody size = %zu", body_size);
-    fflush(stdout);
 
     /* find index of header/body separator */ 
     end_ptr = (u_char*) ngx_strstr(header + l, HEADER_BODY_SEPARATOR);
