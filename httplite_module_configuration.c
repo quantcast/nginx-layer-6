@@ -64,7 +64,7 @@ char* httplite_block(
 
     }
 
-    /* parse inside the myhttp{} block */
+    /* parse inside the httplite{} block */
     pcf = *configuration;
     configuration->ctx = context;
 

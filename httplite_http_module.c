@@ -7,14 +7,26 @@
 #include "httplite_http_module.h"
 
 ngx_command_t httplite_http_commands[] = {
+
     {
-        ngx_string(PORT_KEYWORD),
-        HTTPLITE_MAIN_CONFIGURATION | NGX_CONF_TAKE1,
+        ngx_string("server"),
+        HTTPLITE_MAIN_CONFIGURATION | NGX_CONF_BLOCK,
         ngx_conf_set_num_slot,
         HTTPLITE_MAIN_CONFIGURATION_OFFSET,
         0,
         NULL 
-    }
+    },
+
+    {
+        ngx_string("upstreams"),
+        HTTPLITE_MAIN_CONFIGURATION | NGX_CONF_BLOCK,
+        ngx_conf_set_num_slot,
+        HTTPLITE_MAIN_CONFIGURATION_OFFSET,
+        0,
+        NULL 
+    },
+
+    ngx_null_command
 };
 
 httplite_module_t httplite_http_module_context = {
