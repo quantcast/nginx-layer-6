@@ -5,106 +5,57 @@
 
 #include "httplite_request.h"
 
-#define BUFFER_SIZE 1024
+httplite_request_list_t httplite_init_list(ngx_connection_t *connection) {
+    httplite_request_list_t list = { 0 };
 
-void httplite_request_handler(ngx_event_t *rev)
-{
-    size_t                     size;
-    ssize_t                    n;
-    ngx_buf_t                 *b;
-    ngx_connection_t          *c;
-
-    c = rev->data;
-
-    ngx_log_debug0(NGX_LOG_DEBUG_HTTP, c->log, 0, "http wait request handler");
-
-    if (rev->timedout) {
-        ngx_log_error(NGX_LOG_INFO, c->log, NGX_ETIMEDOUT, "client timed out");
-        httplite_request_close_connection(c);
-        return;
+    httplite_request_slab_t *head = ngx_pcalloc(connection->pool, sizeof(httplite_request_slab_t));
+    
+    if (!head) {
+        ngx_log_error(NGX_ERROR_ALERT, connection->log, 0, "unable to create head slab on connection's memory pool.");
+        return list;
     }
 
-    if (c->close) {
-        httplite_request_close_connection(c);
-        return;
+    head->buffer = ngx_pnalloc(connection->pool, SLAB_SIZE);
+
+    if (!head->buffer) {
+        ngx_log_error(NGX_ERROR_ALERT, connection->log, 0, "unable to the string buffer on connection's memory pool.");
+        return list;
     }
 
-    // TODO: Remove and replace with config variable
-    // https://github.com/quantcast/nginx-layer-6/pull/3#discussion_r1014484359
-    size = BUFFER_SIZE;
+    head->size = 0;
 
-    b = c->buffer;
+    list.head = head;
+    list.tail = head;
+    list.connection = connection;
 
-    if (b == NULL) {
-        b = ngx_create_temp_buf(c->pool, size);
-
-        if (b == NULL) {
-            httplite_request_close_connection(c);
-            return;
-        }
-
-        c->buffer = b;
-
-    } else if (b->start == NULL) {
-        b->start = ngx_palloc(c->pool, size);
-
-        if (b->start == NULL) {
-            httplite_request_close_connection(c);
-            return;
-        }
-
-        b->pos = b->start;
-        b->last = b->start;
-        b->end = b->last + size;
-    }
-
-    n = c->recv(c, b->last, size);
-
-    // TODO: Is this a safe assumption? 
-    // https://github.com/quantcast/nginx-layer-6/pull/3#discussion_r1006215672
-    if (n == NGX_AGAIN) {
-
-        if (!rev->timer_set) {
-            ngx_add_timer(rev, 60 * 1000);
-            ngx_reusable_connection(c, 1);
-        }
-
-        if (ngx_handle_read_event(rev, 0) != NGX_OK) {
-            httplite_request_close_connection(c);
-            return;
-        }
-
-        /*
-         * We are trying to not hold c->buffer's memory for an idle connection.
-         */
-
-        if (ngx_pfree(c->pool, b->start) == NGX_OK) {
-            b->start = NULL;
-        }
-
-        return;
-    }
-
-    if (n == NGX_ERROR) {
-        httplite_request_close_connection(c);
-        return;
-    }
-
-    if (n == 0) {
-        ngx_log_error(NGX_LOG_INFO, c->log, 0,
-                      "client closed connection");
-        httplite_request_close_connection(c);
-        return;
-    }
-
-    b->last += n;
-
-    c->log->action = "reading client request line";
-
-    ngx_reusable_connection(c, 0);
+    return list;
 }
 
-void httplite_request_close_connection(ngx_connection_t *c)
+httplite_request_slab_t *httplite_add_slab(httplite_request_list_t list) {
+    httplite_request_slab_t *new_slab = ngx_pcalloc(list.connection->pool, sizeof(httplite_request_slab_t));
+
+    if (!new_slab) {
+        ngx_log_error(NGX_ERROR_ALERT, list.connection->log, 0, "unable to create new slab on connection's memory pool.");
+        return NULL;
+    }
+
+    new_slab->size = 0;
+    new_slab->buffer = ngx_pnalloc(list.connection->pool, SLAB_SIZE);
+
+    if (!new_slab->buffer) {
+        ngx_log_error(NGX_ERROR_ALERT, list.connection->log, 0, "unable to the string buffer on connection's memory pool.");
+        return NULL;
+    }
+
+
+    list.tail->next = new_slab;
+    list.tail = new_slab;
+    list.tail->next = NULL;
+
+    return new_slab;
+}
+
+void ngx_httplite_close_connection(ngx_connection_t *c)
 {
     ngx_pool_t  *pool;
 
@@ -118,6 +69,90 @@ void httplite_request_close_connection(ngx_connection_t *c)
     ngx_close_connection(c);
 
     ngx_destroy_pool(pool);
+}
+
+// TODO: update this function to reflect new request structure
+void httplite_request_handler(ngx_event_t *rev) {
+    ssize_t                    n;
+    httplite_request_list_t    list;
+    httplite_request_slab_t   *curr;
+    ngx_connection_t          *c;
+
+    c = rev->data;
+
+    ngx_log_debug0(NGX_LOG_DEBUG_HTTP, c->log, 0, "http wait request handler");
+
+    if (rev->timedout) {
+        ngx_log_error(NGX_LOG_INFO, c->log, NGX_ETIMEDOUT, "client timed out");
+        ngx_httplite_close_connection(c);
+        return;
+    }
+
+    if (c->close) {
+        ngx_httplite_close_connection(c);
+        return;
+    }
+
+    list = httplite_init_list(c);
+
+    curr = list.head;
+    
+    if (list.head == NULL) {
+        ngx_log_error(NGX_LOG_ALERT, c->log, 0, "unable to allocate space for the request slab.");
+        ngx_httplite_close_connection(c);
+        return;
+    }
+
+    if (list.head->buffer == NULL) {
+        ngx_log_error(NGX_LOG_ALERT, c->log, 0, "unable to allocate space for the request string.");
+        ngx_httplite_close_connection(c);
+        return;
+    }
+
+    /**
+     * TODO: This is next line receives a single IP packet of up to size `size` bytes. The `request` is memory allocated on the heap
+     * that can hold the request. The arguments are the connection (c), where to put the data (request->last, since we want to append
+     * to the current request), and the upper limit on the size to read.
+     * 
+     * It will return an integer (n) which tells us how many bytes have been read. We want to continue to read until we have the full request.
+     * Remember to clean up memory and resources as you do this (the provided `httplite_request_realloc` and `httplite_request_free`
+     * functions should help you do this, but they may or may not have bugs in them).
+     */
+    n = c->recv(c, curr->buffer, SLAB_SIZE);
+    curr->size = n;
+
+    // TODO: Is this a safe assumption? 
+    // https://github.com/quantcast/nginx-layer-6/pull/3#discussion_r1006215672
+    if (n == NGX_AGAIN) {
+
+        if (!rev->timer_set) {
+            ngx_add_timer(rev, 60 * 1000);
+            ngx_reusable_connection(c, 1);
+        }
+
+        if (ngx_handle_read_event(rev, 0) != NGX_OK) {
+            ngx_httplite_close_connection(c);
+            return;
+        }
+
+        return;
+    }
+
+    if (n == NGX_ERROR) {
+        ngx_httplite_close_connection(c);
+        return;
+    }
+
+    if (n == 0) {
+        ngx_log_error(NGX_LOG_INFO, c->log, 0,
+                      "client closed connection");
+        ngx_httplite_close_connection(c);
+        return;
+    }
+
+    c->log->action = "reading client request line";
+
+    ngx_reusable_connection(c, 0);
 }
 
 // TODO: this function should parse out the request body from the request buffer

@@ -101,7 +101,8 @@ char* httplite_block(
 
     *configuration = pcf;
 
-    if (httplite_http_server_init_listening(configuration, 0xB822) != NGX_OK) {
+    const int PORT = 8888;
+    if (httplite_http_server_init_listening(configuration, PORT) != NGX_OK) {
         printf("Failed to init connection\n");
         return NGX_CONF_ERROR;
     }
