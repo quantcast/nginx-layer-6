@@ -156,7 +156,6 @@ void httplite_request_handler(ngx_event_t *rev) {
 
     n = recv_wrapper(c, curr, rev);
 
-
     if (n <= 0) {
         ngx_log_error(NGX_LOG_ALERT, c->log, 0, "failed recv.");
         return;
