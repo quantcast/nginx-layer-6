@@ -27,6 +27,8 @@
 // configuration context
 typedef struct {
     void        **main_configuration;
+    void        **server_configuration;
+    void        **location_configuration;
 } httplite_configuration_context_t;
 
 typedef struct {
@@ -35,6 +37,12 @@ typedef struct {
 
     void       *(*create_main_configuration)(ngx_conf_t *configuration);
     char       *(*init_main_configuration)(ngx_conf_t *configuration, void *base_configuration);
+
+    void       *(*create_server_configuration)(ngx_conf_t *configuration);
+    char       *(*merge_server_configuration)(ngx_conf_t *configuration, void *prev, void *base_configuration);
+
+    void       *(*create_location_configuration)(ngx_conf_t *configuration);
+    char       *(*merge_location_configuration)(ngx_conf_t *configuration, void *prev, void *base_configuration);        
 } httplite_module_t;
 
 typedef struct {
