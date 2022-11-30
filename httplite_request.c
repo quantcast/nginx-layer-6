@@ -5,6 +5,12 @@
 
 #include "httplite_request.h"
 
+#define LENGTH_HEADER "\nContent-Length: "
+#define LENGTH_HEADER_SIZE strlen(LENGTH_HEADER)
+#define HEADER_BODY_SEPARATOR "\r\n\r\n"
+#define HEADER_BODY_SEPARATOR_SIZE strlen(HEADER_BODY_SEPARATOR)
+
+
 httplite_request_list_t httplite_init_list(ngx_connection_t *connection) {
     httplite_request_list_t list = { 0 };
 
@@ -47,7 +53,6 @@ httplite_request_slab_t *httplite_add_slab(httplite_request_list_t list) {
         return NULL;
     }
 
-
     list.tail->next = new_slab;
     list.tail = new_slab;
     list.tail->next = NULL;
@@ -71,7 +76,47 @@ void ngx_httplite_close_connection(ngx_connection_t *c)
     ngx_destroy_pool(pool);
 }
 
-// TODO: update this function to reflect new request structure
+/* Assumes incoming slab is empty (writes to buffer pointer, overwriting anything there) */
+size_t recv_wrapper(ngx_connection_t *c, httplite_request_slab_t *slab, ngx_event_t *rev) {
+    int n;
+    
+    n = c->recv(c, slab->buffer, SLAB_SIZE);
+
+    if (n == NGX_AGAIN) {
+        if (!rev->timer_set) {
+            ngx_add_timer(rev, 60 * 1000);
+            ngx_reusable_connection(c, 1);
+        }
+
+        if (ngx_handle_read_event(rev, 0) != NGX_OK) {
+            ngx_httplite_close_connection(c);
+            return n;
+        }
+
+        return n;
+    }
+
+    if (n == NGX_ERROR) {
+        ngx_httplite_close_connection(c);
+        return n;
+    }
+
+    if (n == NGX_OK) {
+        ngx_log_error(NGX_LOG_INFO, c->log, 0,
+                      "client closed connection");
+        ngx_httplite_close_connection(c);
+        return n;
+    }
+
+    slab->size += n;
+
+    c->log->action = "reading client request line";
+
+    ngx_reusable_connection(c, 0);
+
+    return n;
+}
+
 void httplite_request_handler(ngx_event_t *rev) {
     ssize_t                    n;
     httplite_request_list_t    list;
@@ -109,55 +154,75 @@ void httplite_request_handler(ngx_event_t *rev) {
         return;
     }
 
-    /**
-     * TODO: This is next line receives a single IP packet of up to size `size` bytes. The `request` is memory allocated on the heap
-     * that can hold the request. The arguments are the connection (c), where to put the data (request->last, since we want to append
-     * to the current request), and the upper limit on the size to read.
-     * 
-     * It will return an integer (n) which tells us how many bytes have been read. We want to continue to read until we have the full request.
-     * Remember to clean up memory and resources as you do this (the provided `httplite_request_realloc` and `httplite_request_free`
-     * functions should help you do this, but they may or may not have bugs in them).
-     */
-    n = c->recv(c, curr->buffer, SLAB_SIZE);
-    curr->size = n;
+    n = recv_wrapper(c, curr, rev);
 
-    // TODO: Is this a safe assumption? 
-    // https://github.com/quantcast/nginx-layer-6/pull/3#discussion_r1006215672
-    if (n == NGX_AGAIN) {
+    if (n <= 0) {
+        ngx_log_error(NGX_LOG_ALERT, c->log, 0, "failed recv.");
+        return;
+    }
 
-        if (!rev->timer_set) {
-            ngx_add_timer(rev, 60 * 1000);
-            ngx_reusable_connection(c, 1);
-        }
+    /* get request length */
+    ssize_t request_length = find_request_length(curr);
+    if (request_length < 0) {
+        ngx_log_error(NGX_LOG_ALERT, c->log, 0, "unable to find request length.");
+        return;
+    }
 
-        if (ngx_handle_read_event(rev, 0) != NGX_OK) {
-            ngx_httplite_close_connection(c);
+    /* call receive function until we have read the entire request */
+    int m;
+    while (n < request_length && rev->ready) {
+        if (!httplite_add_slab(list)) {
+            ngx_log_error(NGX_LOG_ALERT, c->log, 0, "unable to add slab.");
             return;
         }
+        m = recv_wrapper(c, list.tail, rev);
 
-        return;
+        if (m < 0) { 
+            ngx_log_error(NGX_LOG_ALERT, c->log, 0, "failed recv.");
+            return; 
+        }
+
+        n += m;
     }
-
-    if (n == NGX_ERROR) {
-        ngx_httplite_close_connection(c);
-        return;
-    }
-
-    if (n == 0) {
-        ngx_log_error(NGX_LOG_INFO, c->log, 0,
-                      "client closed connection");
-        ngx_httplite_close_connection(c);
-        return;
-    }
-
-    c->log->action = "reading client request line";
-
-    ngx_reusable_connection(c, 0);
 }
 
-// TODO: this function should parse out the request body from the request buffer
-// not sure if these are all the necessary parameters
-ngx_str_t httplite_parse_http_request_body(ngx_buf_t request_buffer) {
-    ngx_str_t str = ngx_string("");
-    return str;
+ssize_t find_request_length(httplite_request_slab_t *slab) {
+    u_char *str, *header, *end_ptr;
+    size_t header_size, l;
+    ssize_t body_size;
+
+    str = slab->buffer;
+    header = ngx_strlcasestrn(str, str + slab->size, (u_char*) LENGTH_HEADER, LENGTH_HEADER_SIZE - 1);
+    /* From nginx documentation:
+    *       ngx_strlcasestrn() is intended to search for static substring
+    *       with known length in string until the argument last. The argument n
+    *       must be length of the second substring - 1.
+    */
+
+    if (header == NULL) {
+        return NGX_ERROR;
+    }
+
+    header += LENGTH_HEADER_SIZE;
+    l = 0;
+
+    /* find size of substring containing value after the header */
+    while (*(header + l) != '\r' && *(header + l) != '\n') {
+        ++l;
+    }
+
+    body_size = ngx_atosz(header, l);
+
+    /* find index of header/body separator */ 
+    end_ptr = (u_char*) ngx_strstr(header + l, HEADER_BODY_SEPARATOR);
+            
+    if (end_ptr == NULL) {
+        return NGX_ERROR;
+    }
+    else {
+        header_size = end_ptr + HEADER_BODY_SEPARATOR_SIZE - str;
+        return body_size + header_size;
+    }
+
+    return NGX_ERROR;
 }

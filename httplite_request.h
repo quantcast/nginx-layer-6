@@ -20,7 +20,7 @@ typedef struct httplite_request_list_s {
 } httplite_request_list_t;
 
 /**
- * Creates a new httplite linked list of slabs, where each slab contains a
+ * @returns new httplite linked list of slabs, where each slab contains a
  * pointer to a SLAB_SIZE string buffer, using the given connection.
 */
 httplite_request_list_t httplite_init_list(ngx_connection_t *connection);
@@ -30,9 +30,23 @@ httplite_request_list_t httplite_init_list(ngx_connection_t *connection);
  * 
  * @returns A pointer to the new slab in the list
 */
-httplite_request_slab_t *httplite_add_node(httplite_request_list_t list);
+httplite_request_slab_t *httplite_add_slab(httplite_request_list_t list);
 
 void httplite_request_handler(ngx_event_t *rev);
 void ngx_httplite_close_connection(ngx_connection_t *c);
+
+/**
+ * Given a slab, looks at the buffer (assumed to contain all the headers of a request)
+ * 
+ * @returns Total request length = size of headers + size of body 
+*/
+ssize_t find_request_length(httplite_request_slab_t *slab);
+
+/**
+ * Reads from a connection into a slab buffer (overwrites contents)
+ * 
+ * @returns Number of bytes read
+*/
+size_t recv_wrapper(ngx_connection_t *c, httplite_request_slab_t *request, ngx_event_t *rev);
 
 #endif
