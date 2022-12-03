@@ -1,7 +1,7 @@
 #include <nginx.h>
 #include <ngx_core.h>
 #include <ngx_string.h>
-#include <ngx_event_connect.h>
+#include <ngx_event.h>
 
 #include "httplite_request.h"
 #include "httplite_upstream.h"
@@ -9,73 +9,57 @@
 
 ngx_array_t *upstreams;
 
-void create_upstreams(ngx_pool_t* pool) {
-    upstreams = ngx_array_create(pool, 4, sizeof(httplite_upstream_t));
-    httplite_upstream_t* upstream_elements = upstreams->elts;
-    upstream_elements[0] = *httplite_create_upstream(pool, "127.0.0.1", 8889);
-    upstream_elements[1] = *httplite_create_upstream(pool, "127.0.0.1", 8890);
-    upstream_elements[2] = *httplite_create_upstream(pool, "127.0.0.1", 8891);
-    upstream_elements[3] = *httplite_create_upstream(pool, "127.0.0.1", 8892);
+httplite_request_list_t httplite_init_list(ngx_connection_t *connection) {
+    httplite_request_list_t list = { 0 };
+
+    httplite_request_slab_t *head = ngx_pcalloc(connection->pool, sizeof(httplite_request_slab_t));
+    
+    if (!head) {
+        ngx_log_error(NGX_ERROR_ALERT, connection->log, 0, "unable to create head slab on connection's memory pool.");
+        return list;
+    }
+
+    head->buffer = ngx_pnalloc(connection->pool, SLAB_SIZE);
+
+    if (!head->buffer) {
+        ngx_log_error(NGX_ERROR_ALERT, connection->log, 0, "unable to the string buffer on connection's memory pool.");
+        return list;
+    }
+
+    head->size = 0;
+
+    list.head = head;
+    list.tail = head;
+    list.connection = connection;
+
+    return list;
 }
 
-httplite_request_t *init_httplite_request(ngx_pool_t *pool, size_t size) {
-    httplite_request_t *request = ngx_pcalloc(pool, sizeof(httplite_request_t));
+httplite_request_slab_t *httplite_add_slab(httplite_request_list_t list) {
+    httplite_request_slab_t *new_slab = ngx_pcalloc(list.connection->pool, sizeof(httplite_request_slab_t));
 
-    if (!request) {
+    if (!new_slab) {
+        ngx_log_error(NGX_ERROR_ALERT, list.connection->log, 0, "unable to create new slab on connection's memory pool.");
         return NULL;
     }
 
-    request->start = ngx_pnalloc(pool, size);
+    new_slab->size = 0;
+    new_slab->buffer = ngx_pnalloc(list.connection->pool, SLAB_SIZE);
 
-    if (!request->start) {
-        ngx_pfree(pool, request);
+    if (!new_slab->buffer) {
+        ngx_log_error(NGX_ERROR_ALERT, list.connection->log, 0, "unable to the string buffer on connection's memory pool.");
         return NULL;
     }
 
-    request->last = request->start;
-    request->end = request->start + size;
-    request->pool = pool;
-    request->size = size;
 
-    return request;
+    list.tail->next = new_slab;
+    list.tail = new_slab;
+    list.tail->next = NULL;
+
+    return new_slab;
 }
 
-int httplite_request_realloc(httplite_request_t *request) {
-    u_char *old_request_str = request->start;
-    size_t diff = request->end - request->start;
-
-    request->start = ngx_pnalloc(request->pool, request->size * 2);
-
-    if (!request->start) {
-        return NGX_DECLINED;
-    }
-
-    strncpy((char *)request->start, (char *)old_request_str, request->size);
-
-    request->size *= 2;
-    request->last = request->start + diff;
-    request->end = request->start + request->size;
-
-    if (ngx_pfree(request->pool, old_request_str)) {
-        return NGX_DECLINED;
-    }
-
-    return NGX_OK;
-}
-
-int httplite_request_free(httplite_request_t *request) {
-    if (!ngx_pfree(request->pool, request->start)) {
-        return NGX_DECLINED;
-    }
-
-    if (!ngx_pfree(request->pool, request)) {
-        return NGX_DECLINED;
-    }
-
-    return NGX_OK;
-}
-
-void httplite_request_close_connection(ngx_connection_t *c)
+void ngx_httplite_close_connection(ngx_connection_t *c)
 {
     ngx_pool_t  *pool;
 
@@ -91,10 +75,11 @@ void httplite_request_close_connection(ngx_connection_t *c)
     ngx_destroy_pool(pool);
 }
 
+// TODO: update this function to reflect new request structure
 void httplite_request_handler(ngx_event_t *rev) {
-    size_t                     size;
     ssize_t                    n;
-    httplite_request_t    *request;
+    httplite_request_list_t    list;
+    httplite_request_slab_t   *curr;
     ngx_connection_t          *c;
 
     c = rev->data;
@@ -103,27 +88,28 @@ void httplite_request_handler(ngx_event_t *rev) {
 
     if (rev->timedout) {
         ngx_log_error(NGX_LOG_INFO, c->log, NGX_ETIMEDOUT, "client timed out");
-        httplite_request_close_connection(c);
+        ngx_httplite_close_connection(c);
         return;
     }
 
     if (c->close) {
-        httplite_request_close_connection(c);
+        ngx_httplite_close_connection(c);
         return;
     }
 
-    size = 1024;
-    request = init_httplite_request(c->pool, size);
+    list = httplite_init_list(c);
 
-    if (request == NULL) {
-        ngx_log_error(NGX_LOG_ALERT, c->log, 0, "unable to allocate space for the httplite request struct.");
-        httplite_request_close_connection(c);
-        return;
-    }
+    curr = list.head;
     
-    if (request->start == NULL) {
+    if (list.head == NULL) {
+        ngx_log_error(NGX_LOG_ALERT, c->log, 0, "unable to allocate space for the request slab.");
+        ngx_httplite_close_connection(c);
+        return;
+    }
+
+    if (list.head->buffer == NULL) {
         ngx_log_error(NGX_LOG_ALERT, c->log, 0, "unable to allocate space for the request string.");
-        httplite_request_close_connection(c);
+        ngx_httplite_close_connection(c);
         return;
     }
 
@@ -135,21 +121,23 @@ void httplite_request_handler(ngx_event_t *rev) {
      * It will return an integer (n) which tells us how many bytes have been read. We want to continue to read until we have the full request.
      * Remember to clean up memory and resources as you do this (the provided `httplite_request_realloc` and `httplite_request_free`
      * functions should help you do this, but they may or may not have bugs in them).
-     * 
-     * 
      */
-    n = c->recv(c, request->last, size);
+    n = c->recv(c, curr->buffer, SLAB_SIZE);
+    curr->size = n;
+    printf("%s\n", curr->buffer);
+    httplite_load_balance(curr, "", "round_robin", upstreams);
 
-    httplite_load_balance(request, "", "round_robin", upstreams);
-
+    // TODO: Is this a safe assumption? 
+    // https://github.com/quantcast/nginx-layer-6/pull/3#discussion_r1006215672
     if (n == NGX_AGAIN) {
+
         if (!rev->timer_set) {
             ngx_add_timer(rev, 60 * 1000);
             ngx_reusable_connection(c, 1);
         }
 
         if (ngx_handle_read_event(rev, 0) != NGX_OK) {
-            httplite_request_close_connection(c);
+            ngx_httplite_close_connection(c);
             return;
         }
 
@@ -157,18 +145,16 @@ void httplite_request_handler(ngx_event_t *rev) {
     }
 
     if (n == NGX_ERROR) {
-        httplite_request_close_connection(c);
+        ngx_httplite_close_connection(c);
         return;
     }
 
     if (n == 0) {
         ngx_log_error(NGX_LOG_INFO, c->log, 0,
                       "client closed connection");
-        httplite_request_close_connection(c);
+        ngx_httplite_close_connection(c);
         return;
     }
-
-    request->last += n;
 
     c->log->action = "reading client request line";
 
@@ -177,7 +163,7 @@ void httplite_request_handler(ngx_event_t *rev) {
 
 // TODO: this function should parse out the request body from the request buffer
 // not sure if these are all the necessary parameters
-ngx_str_t httplite_parse_request_body(ngx_buf_t request_buffer) {
+ngx_str_t httplite_parse_http_request_body(ngx_buf_t request_buffer) {
     ngx_str_t str = ngx_string("");
     return str;
 }

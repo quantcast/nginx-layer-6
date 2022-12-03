@@ -9,7 +9,7 @@
 int httplite_round_robin_next_upstream_index = 0;
 
 ngx_int_t httplite_load_balance(
-    httplite_request_t *request,
+    httplite_request_slab_t *request,
     char* body, 
     char* load_balancing_algorithm,
     ngx_array_t *upstreams 
@@ -19,7 +19,7 @@ ngx_int_t httplite_load_balance(
         upstream_elements[httplite_round_robin_next_upstream_index];
     httplite_initialize_upstream_connection(&next_upstream);
     httplite_send_request_to_upstream(&next_upstream, request);
-    httplite_request_close_connection(next_upstream.peer.connection);
+    ngx_httplite_close_connection(next_upstream.peer.connection);
     if (httplite_round_robin_next_upstream_index + 1 == (int)upstreams->nelts) {
         httplite_round_robin_next_upstream_index = 0;
     } else {

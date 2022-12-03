@@ -60,7 +60,7 @@ void httplite_initialize_upstream_connection(httplite_upstream_t *upstream) {
     }
 }
 
-void httplite_send_request_to_upstream(httplite_upstream_t *upstream, httplite_request_t *request) {
+void httplite_send_request_to_upstream(httplite_upstream_t *upstream, httplite_request_slab_t *request) {
     ngx_connection_t *connection = upstream->peer.connection;
-    connection->send(connection, request->start, request->size);
+    connection->send(connection, request->buffer, request->size);
 }
