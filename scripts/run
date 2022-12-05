@@ -10,6 +10,7 @@ CONFIGURE=0
 VERBOSE=0
 QUIET=0
 REMOVE_OUT=1
+CURRENT_DIR=$(pwd)
 
 # either the absolute path to the module or the relative path from nginx to the module
 # do not have to change if the run file is in the module
@@ -114,7 +115,7 @@ else
     make >> /dev/null;
 fi
 
-echo "Starting nginx"
+echo "Starting nginx using configuration $CURRENT_DIR/nginx.conf"
 # logic for quiet command
 if [ $QUIET == 1 ]
 then

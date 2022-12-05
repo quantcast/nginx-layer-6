@@ -8,13 +8,42 @@
 
 ngx_command_t httplite_http_commands[] = {
     {
-        ngx_string(PORT_KEYWORD),
-        HTTPLITE_MAIN_CONFIGURATION | NGX_CONF_TAKE1,
+        ngx_string("server"),
+        HTTPLITE_MAIN_CONFIGURATION | NGX_CONF_BLOCK | NGX_CONF_NOARGS,
+        httplite_core_server,
+        HTTPLITE_MAIN_CONFIGURATION_OFFSET,
+        0,
+        NULL 
+    },
+
+    {
+        ngx_string("listen"),
+        HTTPLITE_SERVER_CONFIGURATION | NGX_CONF_TAKE1,
+        ngx_conf_set_num_slot,
+        HTTPLITE_SERVER_CONFIGURATION_OFFSET,
+        offsetof(httplite_server_conf_t, port),
+        NULL 
+    },
+
+    {
+        ngx_string("server_name"),
+        HTTPLITE_SERVER_CONFIGURATION | NGX_CONF_TAKE1,
+        ngx_conf_set_str_slot,
+        HTTPLITE_SERVER_CONFIGURATION_OFFSET,
+        offsetof(httplite_server_conf_t, server_name),
+        NULL 
+    },
+
+    {
+        ngx_string("upstreams"),
+        HTTPLITE_MAIN_CONFIGURATION | NGX_CONF_BLOCK | NGX_CONF_NOARGS,
         ngx_conf_set_num_slot,
         HTTPLITE_MAIN_CONFIGURATION_OFFSET,
         0,
         NULL 
-    }
+    },
+
+    ngx_null_command
 };
 
 httplite_module_t httplite_http_module_context = {
@@ -22,6 +51,10 @@ httplite_module_t httplite_http_module_context = {
   httplite_http_block_initialization,                         /* postconfiguration */
   httplite_http_block_create_main_configuration,             /* create main configuration */
   NULL,                                     /* init main configuration */
+  httplite_core_create_server_configuration,                                     /* create server configuration */
+  NULL,                                     /* merge server configuration */
+  NULL,                                     /* create location configuration */
+  NULL,                                     /* merge location configuration */
 };
 
 /* options for the module */
