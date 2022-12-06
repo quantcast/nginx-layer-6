@@ -17,7 +17,6 @@ ngx_int_t httplite_load_balance(
     httplite_upstream_t *upstream_elements = upstreams->elts;
     httplite_upstream_t next_upstream = 
         upstream_elements[httplite_round_robin_next_upstream_index];
-    httplite_initialize_upstream_connection(&next_upstream);
     httplite_send_request_to_upstream(&next_upstream, request);
     ngx_httplite_close_connection(next_upstream.peer.connection);
     if (httplite_round_robin_next_upstream_index + 1 == (int)upstreams->nelts) {

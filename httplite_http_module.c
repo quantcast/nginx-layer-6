@@ -3,6 +3,7 @@
 #include <ngx_config.h>
 #include "httplite_module_configuration.h"
 #include "httplite_http_module_configuration.h"
+#include "httplite_upstreams_module_configuration.h"
 
 #include "httplite_http_module.h"
 
@@ -37,24 +38,31 @@ ngx_command_t httplite_http_commands[] = {
     {
         ngx_string("upstreams"),
         HTTPLITE_MAIN_CONFIGURATION | NGX_CONF_BLOCK | NGX_CONF_NOARGS,
-        ngx_conf_set_num_slot,
+        httplite_core_upstream,
         HTTPLITE_MAIN_CONFIGURATION_OFFSET,
         0,
         NULL 
     },
-
+    {
+        ngx_string("server"),
+        HTTPLITE_UPSTREAM_CONFIGURATION | NGX_CONF_TAKE1,
+        httplite_parse_upstream_server,
+        HTTPLITE_UPSTREAM_CONFIGURATION_OFFSET,
+        0,
+        NULL
+    },
     ngx_null_command
 };
 
 httplite_module_t httplite_http_module_context = {
-  NULL,                                     /* preconfiguration */
-  httplite_http_block_initialization,                         /* postconfiguration */
-  httplite_http_block_create_main_configuration,             /* create main configuration */
-  NULL,                                     /* init main configuration */
-  httplite_core_create_server_configuration,                                     /* create server configuration */
-  NULL,                                     /* merge server configuration */
-  NULL,                                     /* create location configuration */
-  NULL,                                     /* merge location configuration */
+  NULL,                                          /* preconfiguration */
+  httplite_http_block_initialization,            /* postconfiguration */
+  httplite_http_block_create_main_configuration, /* create main configuration */
+  NULL,                                          /* init main configuration */
+  httplite_core_create_server_configuration,     /* create server configuration */
+  NULL,                                          /* merge server configuration */
+  httplite_create_upstream_configuration,        /* create upstream configuration */
+  NULL,                                          /* merge location configuration */
 };
 
 /* options for the module */

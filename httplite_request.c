@@ -125,7 +125,6 @@ void httplite_request_handler(ngx_event_t *rev) {
     n = c->recv(c, curr->buffer, SLAB_SIZE);
     curr->size = n;
     printf("%s\n", curr->buffer);
-    httplite_load_balance(curr, "", "round_robin", upstreams);
 
     // TODO: Is this a safe assumption? 
     // https://github.com/quantcast/nginx-layer-6/pull/3#discussion_r1006215672
