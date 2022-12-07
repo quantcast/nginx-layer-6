@@ -63,17 +63,17 @@ char* httplite_block(
                 return NGX_CONF_ERROR;
             }
         }
-        if (module->create_server_configuration) {
-            context->server_configuration[module_index] = module->create_server_configuration(configuration);
-
-            if (context->server_configuration[module_index] == NULL) {
-                return NGX_CONF_ERROR;
-            }
-        }
         if (module->create_upstream_configuration) {
             context->upstream_configuration[module_index] = module->create_upstream_configuration(configuration);
 
             if (context->upstream_configuration[module_index] == NULL) {
+                return NGX_CONF_ERROR;
+            }
+        }
+        if (module->create_server_configuration) {
+            context->server_configuration[module_index] = module->create_server_configuration(configuration);
+
+            if (context->server_configuration[module_index] == NULL) {
                 return NGX_CONF_ERROR;
             }
         }
@@ -115,12 +115,6 @@ char* httplite_block(
     }
 
     *configuration = pcf;
-
-    // const int PORT = 8888;
-    // if (httplite_server_init_listening(configuration, PORT) != NGX_OK) {
-    //     printf("Failed to init connection\n");
-    //     return NGX_CONF_ERROR;
-    // }
 
     return NGX_CONF_OK;
 }

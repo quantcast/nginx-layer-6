@@ -11,49 +11,14 @@ char *
 httplite_core_upstream(ngx_conf_t *cf, ngx_command_t *cmd, void *dummy)
 {
     char                        *rv;
-    void                        *mconf;
-    ngx_uint_t                   i;
     ngx_conf_t                   pcf;
-    httplite_module_t           *module;
-    httplite_configuration_context_t         *ctx, *http_ctx;
-    httplite_upstream_configuration_t *cscf;
+    httplite_configuration_context_t         *ctx;
+    httplite_upstream_configuration_t *cucf;
 
-    ctx = ngx_pcalloc(cf->pool, sizeof(httplite_configuration_context_t));
-    if (ctx == NULL) {
-        return NGX_CONF_ERROR;
-    }
-
-    http_ctx = cf->ctx;
-    ctx->main_configuration = http_ctx->main_configuration;
-
-    /* the upstream{}'s upstream_conf */
-
-    ctx->upstream_configuration = ngx_pcalloc(cf->pool, sizeof(void *));
-    if (ctx->upstream_configuration == NULL) {
-        return NGX_CONF_ERROR;
-    }
-
-    for (i = 0; cf->cycle->modules[i]; i++) {
-        if (cf->cycle->modules[i]->type != HTTPLITE_MODULE) {
-            continue;
-        }
-
-        module = cf->cycle->modules[i]->ctx;
-
-        if (module->create_upstream_configuration) {
-            mconf = module->create_upstream_configuration(cf);
-            if (mconf == NULL) {
-                return NGX_CONF_ERROR;
-            }
-
-            ctx->upstream_configuration[cf->cycle->modules[i]->ctx_index] = mconf;
-        }
-    }
-
-    /* the upstream configuration context */
-
-    cscf = ctx->upstream_configuration[httplite_http_module.ctx_index];
-    cscf->ctx = ctx;
+    
+    ctx = cf->ctx;
+    cucf = ctx->upstream_configuration[httplite_http_module.ctx_index];
+    cucf->ctx = ctx;
 
     /* parse inside upstream{} */
 
@@ -86,7 +51,7 @@ httplite_create_upstream_configuration(ngx_conf_t *cf)
 }
 
 char* httplite_parse_upstream_server(ngx_conf_t *cf, ngx_command_t *cmd, void *dummy) {
-    // httplite_upstream_configuration_t *cucf = httplite_conf_get_module_upstream_conf(cf, httplite_http_module);
+    httplite_upstream_configuration_t *cucf = httplite_conf_get_module_upstream_conf(cf, httplite_http_module);
     ngx_str_t *value;
     value = cf->args->elts;
 
@@ -101,9 +66,8 @@ char* httplite_parse_upstream_server(ngx_conf_t *cf, ngx_command_t *cmd, void *d
     printf("server: %s\n", server);
     printf("port: %d\n", atoi(port));
 
-    // httplite_upstream_t *upstream = ngx_array_push(&cucf->upstreams);
-    // *upstream = *httplite_create_upstream(cf->pool, server, atoi(port));
-    // httplite_initialize_upstream_connection(upstream);
+    httplite_upstream_t *upstream = ngx_array_push(&cucf->upstreams);
+    *upstream = *httplite_create_upstream(cucf, server, atoi(port));
 
     return NGX_CONF_OK;
 }
