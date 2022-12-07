@@ -7,8 +7,6 @@
 #include "httplite_upstream.h"
 #include "httplite_load_balancer.h"
 
-ngx_array_t *upstreams;
-
 httplite_request_list_t httplite_init_list(ngx_connection_t *connection) {
     httplite_request_list_t list = { 0 };
 

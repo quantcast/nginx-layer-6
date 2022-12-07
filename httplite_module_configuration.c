@@ -1,6 +1,6 @@
 #include <nginx.h>
 #include <ngx_core.h>
-#include "httplite_server.h"
+// #include "httplite_server.h"
 
 #include "httplite_module_configuration.h"
 
@@ -39,8 +39,10 @@ char* httplite_block(
 
     /* the httplite module main context */
     context->main_configuration = ngx_pcalloc(configuration->pool, httplite_max_module_count * sizeof(void*));
+    context->server_configuration = ngx_pcalloc(configuration->pool, httplite_max_module_count * sizeof(void*));
+    context->upstream_configuration = ngx_pcalloc(configuration->pool, httplite_max_module_count * sizeof(void*));
 
-    if (context->main_configuration == NULL) {
+    if (context->main_configuration == NULL || context->server_configuration == NULL || context->upstream_configuration == NULL) {
         return NGX_CONF_ERROR;
     }
 
@@ -61,7 +63,20 @@ char* httplite_block(
                 return NGX_CONF_ERROR;
             }
         }
+        if (module->create_server_configuration) {
+            context->server_configuration[module_index] = module->create_server_configuration(configuration);
 
+            if (context->server_configuration[module_index] == NULL) {
+                return NGX_CONF_ERROR;
+            }
+        }
+        if (module->create_upstream_configuration) {
+            context->upstream_configuration[module_index] = module->create_upstream_configuration(configuration);
+
+            if (context->upstream_configuration[module_index] == NULL) {
+                return NGX_CONF_ERROR;
+            }
+        }
     }
 
     /* parse inside the httplite{} block */
@@ -101,11 +116,11 @@ char* httplite_block(
 
     *configuration = pcf;
 
-    const int PORT = 8888;
-    if (httplite_server_init_listening(configuration, PORT) != NGX_OK) {
-        printf("Failed to init connection\n");
-        return NGX_CONF_ERROR;
-    }
+    // const int PORT = 8888;
+    // if (httplite_server_init_listening(configuration, PORT) != NGX_OK) {
+    //     printf("Failed to init connection\n");
+    //     return NGX_CONF_ERROR;
+    // }
 
     return NGX_CONF_OK;
 }

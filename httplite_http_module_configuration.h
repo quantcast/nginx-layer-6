@@ -4,7 +4,7 @@
 #include <nginx.h>
 #include <ngx_core.h>
 
-ngx_int_t httplite_http_block_initialization(ngx_conf_t *configuration);
+char* httplite_http_block_initialization(ngx_conf_t *configuration, void* conf);
 void* httplite_http_block_create_main_configuration(ngx_conf_t* configuration);
 
 char* httplite_core_server(ngx_conf_t *cf, ngx_command_t *cmd, void *dummy);

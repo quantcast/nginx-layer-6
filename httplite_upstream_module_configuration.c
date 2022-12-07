@@ -5,7 +5,7 @@
 #include "httplite_upstream.h"
 #include "httplite_module_configuration.h"
 
-#include "httplite_upstreams_module_configuration.h"
+#include "httplite_upstream_module_configuration.h"
 
 char *
 httplite_core_upstream(ngx_conf_t *cf, ngx_command_t *cmd, void *dummy)
@@ -16,7 +16,7 @@ httplite_core_upstream(ngx_conf_t *cf, ngx_command_t *cmd, void *dummy)
     ngx_conf_t                   pcf;
     httplite_module_t           *module;
     httplite_configuration_context_t         *ctx, *http_ctx;
-    httplite_server_conf_t    *cscf;
+    httplite_upstream_configuration_t *cscf;
 
     ctx = ngx_pcalloc(cf->pool, sizeof(httplite_configuration_context_t));
     if (ctx == NULL) {
@@ -80,6 +80,7 @@ httplite_create_upstream_configuration(ngx_conf_t *cf)
 
     cucf->balancing_algorithm = NGX_CONF_UNSET;
     ngx_array_init(&cucf->upstreams, cf->pool, 1, sizeof(httplite_upstream_t));
+    cucf->pool = ngx_create_pool(NGX_DEFAULT_POOL_SIZE, cf->log);
 
     return cucf;
 }
@@ -103,9 +104,6 @@ char* httplite_parse_upstream_server(ngx_conf_t *cf, ngx_command_t *cmd, void *d
     // httplite_upstream_t *upstream = ngx_array_push(&cucf->upstreams);
     // *upstream = *httplite_create_upstream(cf->pool, server, atoi(port));
     // httplite_initialize_upstream_connection(upstream);
-
-    httplite_upstream_t *upstream = httplite_create_upstream(cf->pool, "127.0.0.1", 8889);
-    httplite_initialize_upstream_connection(upstream);
 
     return NGX_CONF_OK;
 }

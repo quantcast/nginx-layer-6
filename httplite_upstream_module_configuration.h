@@ -4,6 +4,8 @@
 #include <nginx.h>
 #include <ngx_core.h>
 
+#include "httplite_module_configuration.h"
+
 #define HTTPLITE_UPSTREAM_CONFIGURATION      0x08000000
 
 #define HTTPLITE_UPSTREAM_CONFIGURATION_OFFSET      offsetof(httplite_configuration_context_t, upstream_configuration)
@@ -15,6 +17,7 @@ typedef struct {
     httplite_configuration_context_t   *ctx;
     ngx_array_t                         upstreams;
     load_balance_method_t               balancing_algorithm;
+    ngx_pool_t                         *pool;
 } httplite_upstream_configuration_t;
 
 char* httplite_core_upstream(ngx_conf_t *cf, ngx_command_t *cmd, void *dummy);
