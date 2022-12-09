@@ -38,7 +38,7 @@ httplite_create_upstream_configuration(ngx_conf_t *cf)
 {
     httplite_upstream_configuration_t  *cucf;
 
-    cucf = ngx_pcalloc(cf->pool, sizeof(httplite_server_conf_t));
+    cucf = ngx_pcalloc(cf->pool, sizeof(httplite_upstream_configuration_t));
     if (cucf == NULL) {
         return NULL;
     }
@@ -66,8 +66,7 @@ char* httplite_parse_upstream_server(ngx_conf_t *cf, ngx_command_t *cmd, void *d
     printf("server: %s\n", server);
     printf("port: %d\n", atoi(port));
 
-    httplite_upstream_t *upstream = ngx_array_push(&cucf->upstreams);
-    *upstream = *httplite_create_upstream(cucf, server, atoi(port));
+    httplite_create_upstream(cucf, server, atoi(port));
 
     return NGX_CONF_OK;
 }

@@ -6,7 +6,7 @@
 #include "httplite_upstream_module_configuration.h"
 
 httplite_upstream_t *httplite_create_upstream(httplite_upstream_configuration_t *uscf, char *address, ngx_int_t port) {
-    httplite_upstream_t *upstream = ngx_pcalloc(uscf->pool, sizeof(httplite_upstream_t));
+    httplite_upstream_t *upstream = ngx_array_push(&uscf->upstreams);
 
     if (!upstream) {
         return NULL;
