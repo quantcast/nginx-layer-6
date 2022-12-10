@@ -63,9 +63,6 @@ char* httplite_parse_upstream_server(ngx_conf_t *cf, ngx_command_t *cmd, void *d
     memset(server, 0, server_len);
     strncpy(server, upstream_server, server_len - 1);
 
-    printf("server: %s\n", server);
-    printf("port: %d\n", atoi(port));
-
     httplite_create_upstream(cucf, server, atoi(port));
 
     return NGX_CONF_OK;

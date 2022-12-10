@@ -56,10 +56,9 @@ void httplite_server_init_connection(ngx_connection_t *c)
 
     ngx_array_t upstreams_array = (*upstream_configuration)->upstreams;
 
-    printf("num elements: %lu\n", upstreams_array.nelts);
     for (ngx_uint_t i = 0; i < upstreams_array.nelts; i++) {
-        httplite_upstream_t *upstream = ((httplite_upstream_t**)upstreams_array.elts)[i];
-        httplite_initialize_upstream_connection(upstream);
+        httplite_upstream_t upstream = ((httplite_upstream_t*)upstreams_array.elts)[i];
+        httplite_initialize_upstream_connection(&upstream);
     }
 
     if (ngx_handle_read_event(rev, 0) != NGX_OK) {

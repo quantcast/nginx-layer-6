@@ -55,11 +55,11 @@ ngx_int_t httplite_free_upstream(httplite_upstream_t* upstream) {
 }
 
 void httplite_initialize_upstream_connection(httplite_upstream_t *upstream) {
-    // ngx_int_t result = ngx_event_connect_peer(&upstream->peer);
-    // if (result != NGX_OK) {
-    //     fprintf(stderr, "Something went wrong when creating connection.\n");
-    //     ngx_pfree(upstream->pool, upstream);
-    // }
+    ngx_int_t result = ngx_event_connect_peer(&upstream->peer);
+    if (result != NGX_OK) {
+        fprintf(stderr, "Something went wrong when creating connection.\n");
+        ngx_pfree(upstream->pool, upstream);
+    }
 }
 
 void httplite_send_request_to_upstream(httplite_upstream_t *upstream, httplite_request_slab_t *request) {

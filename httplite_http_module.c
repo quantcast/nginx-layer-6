@@ -56,9 +56,9 @@ ngx_command_t httplite_http_commands[] = {
 
 httplite_module_t httplite_http_module_context = {
   NULL,                                          /* preconfiguration */
-  NULL,                                          /* postconfiguration */
+  httplite_http_block_initialization,            /* postconfiguration */
   httplite_http_block_create_main_configuration, /* create main configuration */
-  httplite_http_block_initialization,            /* init main configuration */
+  NULL,                                          /* init main configuration */
   httplite_core_create_server_configuration,     /* create server configuration */
   NULL,                                          /* merge server configuration */
   httplite_create_upstream_configuration,        /* create upstream configuration */

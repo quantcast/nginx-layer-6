@@ -6,8 +6,14 @@
 #include "httplite_module_configuration.h"
 #include "httplite_upstream_module_configuration.h"
 
-ngx_int_t httplite_http_block_initialization(ngx_conf_t *configuration, void* conf) {
+ngx_int_t httplite_http_block_initialization(ngx_conf_t *configuration) {
+    httplite_server_conf_t *cscf = httplite_conf_get_module_server_conf(configuration, httplite_http_module);
+    
     // associating configuration with module
+    if (httplite_server_init_listening(configuration, cscf->port) != NGX_OK) {
+        fprintf(stderr, "Failed to init connection\n");
+        return NGX_ERROR;
+    }
 
     return NGX_OK;
 }
@@ -48,15 +54,6 @@ httplite_core_server(ngx_conf_t *cf, ngx_command_t *cmd, void *dummy)
     rv = ngx_conf_parse(cf, NULL);
 
     *cf = pcf;
-
-    printf("port: %lu\n", cscf->port);
-    printf("server name: %s\n", cscf->server_name.data);
-    fflush(stdout);
-
-    if (httplite_server_init_listening(cf, cscf->port) != NGX_OK) {
-        fprintf(stderr, "Failed to init connection\n");
-        return NGX_CONF_ERROR;
-    }
 
     return rv;
 }

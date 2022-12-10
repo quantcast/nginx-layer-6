@@ -114,6 +114,25 @@ char* httplite_block(
         }
     }
 
+    for (m = 0; ngx_modules[m]; m++) {
+
+        if (ngx_modules[m]->type != HTTPLITE_MODULE) {
+            continue;
+        }
+
+        module = ngx_modules[m]->ctx;
+        module_index = ngx_modules[m]->ctx_index;
+
+        /* init tcp{} main_configurationss */
+        configuration->ctx = context;
+
+        if (module->postconfiguration) {
+            if (module->postconfiguration(configuration) != NGX_OK) {
+                return NGX_CONF_ERROR;
+            }
+        }
+    }
+
     *configuration = pcf;
 
     return NGX_CONF_OK;
