@@ -17,5 +17,9 @@ development container. More information on this to come.
 Furthermore, to test a localhost connection, there are sample bodies provided in the `test/requests`
 directory. These sample bodies can be retrieved in either one recv call (`post_body_1024.txt`) or two
 (`post_body_2048.txt`), assuming a read size of 1024 bytes. You can make such requests using `curl`, as shown:
-```curl '127.0.0.1:8888' -d "$(cat test/requests/<file_name>.txt)"```
-If you print the `request->start` parameter as a string, you should see the contents of the presentation http request.
+```curl -X POST '127.0.0.1:8888' -d "$(cat test/requests/<file_name>.txt)"```
+
+However, we made it easier that you make request calls by using a file that assembles them for us.
+For example to make a POST call to post_body_2048.txt file, use this script
+
+./scripts/make-request -t POST -h localhost -p 8888 -f ./test/requests/post_body_2048.txt

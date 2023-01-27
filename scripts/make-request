@@ -3,9 +3,15 @@ PORT=
 HOST=
 TEST_FILE=
 DATA=
+TYPE=
 
 while [[ $# -gt 0 ]]; do
     case $1 in
+        -t|--type)
+           shift
+           TYPE=$1
+           shift
+           ;;
         -p|--port)
             shift
             PORT=$1
@@ -46,7 +52,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if [ -z $PORT ] || [ -z $HOST ] || ([ -z $TEST_FILE ] && [ -z $DATA ])
+if [ -z $TYPE ] || [ -z $PORT ] || [ -z $HOST ] || ([ -z $TEST_FILE ] && [ -z $DATA ])
 then
     echo "Illegal usage: must have all flags [-p] [-h] [-fd]"
     exit 1
@@ -56,8 +62,8 @@ fi
 if [ ! -z $DATA ]
 then
     echo "Calling curl on address $HOST:$PORT with given data"
-    curl "$HOST:$PORT" -d "$DATA"
+    curl -X "$TYPE" "$HOST:$PORT" -d "$DATA"
 else
     echo "Calling curl on address $HOST:$PORT with data from $TEST_FILE"
-    curl "$HOST:$PORT" -d "$(cat $TEST_FILE)"
+    curl -X "$TYPE" "$HOST:$PORT" -d "$(cat $TEST_FILE)"
 fi
