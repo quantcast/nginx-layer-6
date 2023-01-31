@@ -187,42 +187,65 @@ void httplite_request_handler(ngx_event_t *rev) {
 }
 
 ssize_t find_request_length(httplite_request_slab_t *slab) {
-    u_char *str, *header, *end_ptr;
+    u_char *str, *curr, *end_ptr;
     size_t header_size, l;
     ssize_t body_size;
 
     str = slab->buffer;
-    header = ngx_strlcasestrn(str, str + slab->size, (u_char*) LENGTH_HEADER, LENGTH_HEADER_SIZE - 1);
+    curr = str;
+    body_size = 0;
+
+    curr = ngx_strlcasestrn(str, str + slab->size, (u_char*) LENGTH_HEADER, LENGTH_HEADER_SIZE - 1);
     /* From nginx documentation:
     *       ngx_strlcasestrn() is intended to search for static substring
     *       with known length in string until the argument last. The argument n
     *       must be length of the second substring - 1.
     */
 
-    if (header == NULL) {
-        return NGX_ERROR;
+    if (curr != NULL) {
+        curr += LENGTH_HEADER_SIZE;
+        l = 0;
+
+        /* find size of substring containing value after the header */
+        while (*(curr + l) != '\r' && *(curr + l) != '\n') {
+            ++l;
+        }
+
+        body_size = ngx_atosz(curr, l);
+
+        curr += l;
     }
 
-    header += LENGTH_HEADER_SIZE;
-    l = 0;
-
-    /* find size of substring containing value after the header */
-    while (*(header + l) != '\r' && *(header + l) != '\n') {
-        ++l;
-    }
-
-    body_size = ngx_atosz(header, l);
-
-    /* find index of header/body separator */ 
-    end_ptr = (u_char*) ngx_strstr(header + l, HEADER_BODY_SEPARATOR);
+    /* find index of header separator */ 
+    curr = (u_char*) ngx_strstr(curr, HEADER_BODY_SEPARATOR);
             
-    if (end_ptr == NULL) {
+    if (curr == NULL) {
         return NGX_ERROR;
     }
     else {
-        header_size = end_ptr + HEADER_BODY_SEPARATOR_SIZE - str;
+        curr += HEADER_BODY_SEPARATOR_SIZE;
+        header_size = curr - str;
+        
+        curr += body_size + 1;
+        // TODO: what if end of body is in the next slab? move this to recv wrapper
+
+        if (check_http_method(curr) == 1) {
+            // TODO: process pipelined request
+        }
+
         return body_size + header_size;
     }
 
     return NGX_ERROR;
 }
+
+size_t check_http_method(u_char *str) {
+    if (ngx_strncmp(str, "GET", 3) == 0 ||
+            ngx_strncmp(str, "POST", 4) == 0 ||
+            ngx_strncmp(str, "PUT", 3) == 0) {
+        // TODO: add the other methods
+        return 1;
+    }
+    return 0;
+}
+

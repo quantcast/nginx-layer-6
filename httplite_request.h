@@ -16,8 +16,14 @@ typedef struct httplite_request_slab_s {
 typedef struct httplite_request_list_s {
     httplite_request_slab_t *head;
     httplite_request_slab_t *tail;
-    ngx_connection_t *connection;           /* A pointer to the parent connection */
+    //httplite_connection_t *connection;           /* A pointer to the parent connection */
+    ngx_connection_t *connection;
 } httplite_request_list_t;
+
+typedef struct httplite_connection_s {
+    ngx_connection_t *ngx_connection;
+    ngx_queue_t request_q;                  /* maintains order of pipelined requests */
+} httplite_connection_t;
 
 /**
  * @returns new httplite linked list of slabs, where each slab contains a
@@ -48,5 +54,12 @@ ssize_t find_request_length(httplite_request_slab_t *slab);
  * @returns Number of bytes read
 */
 size_t recv_wrapper(ngx_connection_t *c, httplite_request_slab_t *request, ngx_event_t *rev);
+
+/**
+ * Determines if given string is an HTTP method name.
+ * 
+ * @returns 1 if str is an HTTP method, 0 if str is not an HTTP method
+*/
+size_t check_http_method(u_char *str);
 
 #endif
