@@ -242,10 +242,15 @@ ssize_t find_request_length(httplite_request_slab_t *slab) {
 size_t check_http_method(u_char *str) {
     if (ngx_strncmp(str, "GET", 3) == 0 ||
             ngx_strncmp(str, "POST", 4) == 0 ||
-            ngx_strncmp(str, "PUT", 3) == 0) {
-        // TODO: add the other methods
+            ngx_strncmp(str, "PUT", 3) == 0 ||
+            ngx_strncmp(str, "CONNECT", 7) == 0 ||
+            ngx_strncmp(str, "DELETE", 6) == 0 ||
+            ngx_strncmp(str, "HEAD", 4) == 0 ||
+            ngx_strncmp(str, "OPTIONS", 7) == 0 ||
+            ngx_strncmp(str, "TRACE", 5) == 0) {
+        // TODO: check on TRACE; it is not supported by browsers
+        // source: https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods
         return 1;
     }
     return 0;
 }
-
