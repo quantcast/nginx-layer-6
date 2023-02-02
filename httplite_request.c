@@ -49,7 +49,6 @@ httplite_request_slab_t *httplite_add_slab(httplite_request_list_t list) {
         return NULL;
     }
 
-
     list.tail->next = new_slab;
     list.tail = new_slab;
     list.tail->next = NULL;
@@ -57,7 +56,7 @@ httplite_request_slab_t *httplite_add_slab(httplite_request_list_t list) {
     return new_slab;
 }
 
-void ngx_httplite_close_connection(ngx_connection_t *c)
+void httplite_close_connection(ngx_connection_t *c)
 {
     ngx_pool_t  *pool;
 
@@ -82,16 +81,19 @@ void httplite_request_handler(ngx_event_t *rev) {
 
     c = rev->data;
 
+    const uint NUM_UPSTREAMS = ((httplite_upstream_configuration_t*)(c->listening->servers))->upstreams.nelts;
+    static int upstream_index = 0;
+
     ngx_log_debug0(NGX_LOG_DEBUG_HTTP, c->log, 0, "http wait request handler");
 
     if (rev->timedout) {
         ngx_log_error(NGX_LOG_INFO, c->log, NGX_ETIMEDOUT, "client timed out");
-        ngx_httplite_close_connection(c);
+        httplite_close_connection(c);
         return;
     }
 
     if (c->close) {
-        ngx_httplite_close_connection(c);
+        httplite_close_connection(c);
         return;
     }
 
@@ -101,13 +103,13 @@ void httplite_request_handler(ngx_event_t *rev) {
     
     if (list.head == NULL) {
         ngx_log_error(NGX_LOG_ALERT, c->log, 0, "unable to allocate space for the request slab.");
-        ngx_httplite_close_connection(c);
+        httplite_close_connection(c);
         return;
     }
 
     if (list.head->buffer == NULL) {
         ngx_log_error(NGX_LOG_ALERT, c->log, 0, "unable to allocate space for the request string.");
-        ngx_httplite_close_connection(c);
+        httplite_close_connection(c);
         return;
     }
 
@@ -122,10 +124,12 @@ void httplite_request_handler(ngx_event_t *rev) {
      */
     n = c->recv(c, curr->buffer, SLAB_SIZE);
     curr->size = n;
+    httplite_upstream_configuration_t *upstream_configuration = c->listening->servers;
+    httplite_upstream_t *upstream_elements = upstream_configuration->upstreams.elts;
 
-    httplite_upstream_configuration_t **upstream_configuration = ((ngx_array_t*)(c)->listening->servers)->elts;
+    // NOTE: Possible race condition below
     httplite_send_request_to_upstream(
-        ((httplite_upstream_t *)(*upstream_configuration)->upstreams.elts),
+        &upstream_elements[upstream_index++ % NUM_UPSTREAMS],
         curr
     );
 
@@ -139,7 +143,7 @@ void httplite_request_handler(ngx_event_t *rev) {
         }
 
         if (ngx_handle_read_event(rev, 0) != NGX_OK) {
-            ngx_httplite_close_connection(c);
+            httplite_close_connection(c);
             return;
         }
 
@@ -147,14 +151,14 @@ void httplite_request_handler(ngx_event_t *rev) {
     }
 
     if (n == NGX_ERROR) {
-        ngx_httplite_close_connection(c);
+        httplite_close_connection(c);
         return;
     }
 
     if (n == 0) {
         ngx_log_error(NGX_LOG_INFO, c->log, 0,
                       "client closed connection");
-        ngx_httplite_close_connection(c);
+        httplite_close_connection(c);
         return;
     }
 

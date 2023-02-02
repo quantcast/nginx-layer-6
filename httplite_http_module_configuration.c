@@ -9,20 +9,12 @@
 
 ngx_int_t httplite_http_block_initialization(ngx_conf_t *configuration) {
     httplite_server_conf_t *cscf = httplite_conf_get_module_server_conf(configuration, httplite_http_module);
-    
+
     // associating configuration with module
     if (httplite_server_init_listening(configuration, cscf->port) != NGX_OK) {
         fprintf(stderr, "Failed to init connection\n");
         return NGX_ERROR;
     }
-
-    httplite_upstream_configuration_t *cucf = httplite_conf_get_module_upstream_conf(configuration, httplite_http_module);
-
-    for (ngx_uint_t i = 0; i < cucf->upstreams.nelts; i++) {
-        httplite_upstream_t upstream = ((httplite_upstream_t*)cucf->upstreams.elts)[i];
-        httplite_initialize_upstream_connection(&upstream);
-    }
-
     return NGX_OK;
 }
 

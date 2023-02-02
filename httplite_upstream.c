@@ -2,6 +2,7 @@
 #include <ngx_core.h>
 
 #include "httplite_http_module.h"
+#include "httplite_request.h"
 #include "httplite_upstream.h"
 #include "httplite_upstream_module_configuration.h"
 
@@ -44,7 +45,6 @@ httplite_upstream_t *httplite_create_upstream(httplite_upstream_configuration_t 
     upstream->peer.log = NULL;
     upstream->peer.log_error = NGX_ERROR_ERR;
 
-
     return upstream;
 }
 
@@ -69,10 +69,9 @@ void httplite_dummy_write_handler() {
 
 void httplite_initialize_upstream_connection(httplite_upstream_t *upstream) {
     printf("upstream peer: %p\n", upstream->peer.connection);
+    ngx_int_t result = ngx_event_connect_peer(&upstream->peer);
     upstream->peer.connection->read->handler = httplite_dummy_read_handler;
     upstream->peer.connection->write->handler = httplite_dummy_write_handler;
-    
-    ngx_int_t result = ngx_event_connect_peer(&upstream->peer);
 
     if (result != NGX_OK && result != NGX_AGAIN) {
         fprintf(stderr, "Something went wrong when creating connection.\n");
@@ -81,9 +80,26 @@ void httplite_initialize_upstream_connection(httplite_upstream_t *upstream) {
 }
 
 void httplite_handle_send_request_to_upstream(ngx_event_t *event) {
+    ngx_connection_t     *c;
+    httplite_request_slab_t *r;
+    httplite_upstream_t *u;
+
+    c = event->data;
+    r = c->data;
+
+    u = r->upstream;
+    c = u->peer.connection;
+
+    printf("%s\n", r->buffer);
+
+    c->send(c, r->buffer, r->size);
+
+    // after sending the message, prevent more of the same messages from sending
+    c->write->handler = httplite_empty_upstream_handler;
 }
 
 void httplite_send_request_to_upstream(httplite_upstream_t *upstream, httplite_request_slab_t *request) {
+    httplite_initialize_upstream_connection(upstream);
     ngx_connection_t *connection = upstream->peer.connection;
 
     if (!connection) {
@@ -93,10 +109,11 @@ void httplite_send_request_to_upstream(httplite_upstream_t *upstream, httplite_r
         return;
     }
     
-    if (!connection->write->ready) {
-        connection->write->handler = httplite_handle_send_request_to_upstream;
-    } else {
+    connection->data = request;
+    request->upstream = upstream;
+    
+    connection->write->handler = httplite_handle_send_request_to_upstream;
+    if (connection->write->ready) {
         connection->send(connection, request->buffer, request->size);
     }
-
 }

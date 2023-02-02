@@ -5,11 +5,14 @@
 #include <ngx_core.h>
 #include <ngx_event.h>
 
+#include "httplite_upstream.h"
+
 #define SLAB_SIZE 1500      /* MTU size */
 
 typedef struct httplite_request_slab_s {
     u_char *buffer;                         /* A pointer to the memory holding the request string */
     struct httplite_request_slab_s *next;   /* A pointer to the next slab in the linked list */
+    httplite_upstream_t *upstream;          /* An (optional) pointer to the upstream to be sent to */
     size_t size;                            /* The number of bytes that have been filled in the slab */
 } httplite_request_slab_t;
 
@@ -33,6 +36,8 @@ httplite_request_list_t httplite_init_list(ngx_connection_t *connection);
 httplite_request_slab_t *httplite_add_node(httplite_request_list_t list);
 
 void httplite_request_handler(ngx_event_t *rev);
-void ngx_httplite_close_connection(ngx_connection_t *c);
+void httplite_close_connection(ngx_connection_t *c);
+
+void httplite_send_request_to_upstream(httplite_upstream_t *upstream, httplite_request_slab_t *request);
 
 #endif
