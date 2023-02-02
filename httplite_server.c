@@ -25,8 +25,6 @@ void httplite_server_init_connection(ngx_connection_t *c)
 {
     ngx_event_t               *rev;
 
-    httplite_upstream_configuration_t **upstream_configuration = ((ngx_array_t*)c->listening->servers)->elts;
-    
     c->log->connection = c->number;
     c->log->handler = httplite_server_log_error;
     c->log->data = NULL;
@@ -54,17 +52,14 @@ void httplite_server_init_connection(ngx_connection_t *c)
     ngx_add_timer(rev, 60 * 1000);
     ngx_reusable_connection(c, 1);
 
-    ngx_array_t upstreams_array = (*upstream_configuration)->upstreams;
-
-    for (ngx_uint_t i = 0; i < upstreams_array.nelts; i++) {
-        httplite_upstream_t upstream = ((httplite_upstream_t*)upstreams_array.elts)[i];
-        httplite_initialize_upstream_connection(&upstream);
-    }
-
     if (ngx_handle_read_event(rev, 0) != NGX_OK) {
         ngx_httplite_close_connection(c);
         return;
     }
+}
+
+void httplite_dummy_read_handler_x() {
+    printf("read\n");
 }
 
 ngx_int_t httplite_server_init_listening(ngx_conf_t *cf, ngx_int_t port)
@@ -86,7 +81,6 @@ ngx_int_t httplite_server_init_listening(ngx_conf_t *cf, ngx_int_t port)
     socket_address->sin_len = socket_length;
     socket_address->sin_addr.s_addr = INADDR_ANY;
 
-    
     ls = ngx_create_listening(cf, (struct sockaddr*)socket_address, socket_length);
     ls->servers = ngx_array_create(cf->pool, 4, sizeof(httplite_upstream_configuration_t*));
     httplite_upstream_configuration_t** upstream_configuration = (httplite_upstream_configuration_t**) ngx_array_push(ls->servers);
