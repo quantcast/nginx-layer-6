@@ -4,6 +4,12 @@
 #include <ngx_event.h>
 
 #include "httplite_request.h"
+
+#define LENGTH_HEADER "\nContent-Length: "
+#define LENGTH_HEADER_SIZE strlen(LENGTH_HEADER)
+#define HEADER_BODY_SEPARATOR "\r\n\r\n"
+#define HEADER_BODY_SEPARATOR_SIZE strlen(HEADER_BODY_SEPARATOR)
+
 #include "httplite_upstream.h"
 #include "httplite_load_balancer.h"
 
@@ -192,6 +198,75 @@ void httplite_client_write_handler(ngx_event_t *event) {
     upstream->read->handler = httplite_empty_read_handler;
 }
 
+/* Assumes incoming slab is empty (writes to buffer pointer, overwriting anything there) */
+size_t recv_wrapper(ngx_connection_t *c, httplite_request_slab_t *slab, ngx_event_t *rev) {
+    int n;
+
+    const int NUM_UPSTREAMS = ((httplite_upstream_configuration_t*)(c->listening->servers))->upstreams.nelts;
+    static int upstream_index = 0;
+    
+    n = c->recv(c, slab->buffer, SLAB_SIZE);
+
+    httplite_upstream_configuration_t *upstream_configuration = c->listening->servers;
+    httplite_upstream_t *upstream_elements = upstream_configuration->upstreams.elts;
+    
+    // NOTE: Possible race condition below
+    httplite_upstream_t *upstream = &upstream_elements[upstream_index++ % NUM_UPSTREAMS];
+
+    httplite_refresh_upstream_connection(upstream);
+    ngx_connection_t *upstream_connection = upstream->peer.connection;
+
+    httplite_event_connection_t *connections = ngx_pcalloc(c->pool, sizeof(httplite_event_connection_t));
+    if (!connections) {
+        fprintf(stderr, "Unable to instantiate httplite_event_connection_t pointer.\n");
+        return NGX_ERROR;
+    }
+
+    connections->client_connection = c;
+    connections->upstream_connection = upstream_connection;
+
+    c->data = connections;
+
+    c->read->handler = httplite_empty_read_handler;
+    c->write->handler = httplite_empty_write_handler;
+
+    httplite_send_request_to_upstream(upstream, slab);
+
+    if (n == NGX_AGAIN) {
+        if (!rev->timer_set) {
+            ngx_add_timer(rev, 60 * 1000);
+            ngx_reusable_connection(c, 1);
+        }
+
+        if (ngx_handle_read_event(rev, 0) != NGX_OK) {
+            httplite_close_connection(c);
+            return n;
+        }
+
+        return n;
+    }
+
+    if (n == NGX_ERROR) {
+        httplite_close_connection(c);
+        return n;
+    }
+
+    if (n == NGX_OK) {
+        ngx_log_error(NGX_LOG_INFO, c->log, 0,
+                      "client closed connection");
+        httplite_close_connection(c);
+        return n;
+    }
+
+    slab->size += n;
+
+    c->log->action = "reading client request line";
+
+    ngx_reusable_connection(c, 0);
+
+    return n;
+}
+
 // TODO: update this function to reflect new request structure
 void httplite_request_handler(ngx_event_t *rev) {
     ssize_t                    n;
@@ -200,10 +275,6 @@ void httplite_request_handler(ngx_event_t *rev) {
     ngx_connection_t          *c;
 
     c = rev->data;
-
-    // TODO: Replace with circular queue
-    const uint NUM_UPSTREAMS = ((httplite_upstream_configuration_t*)(c->listening->servers))->upstreams.nelts;
-    static int upstream_index = 0;
 
     ngx_log_debug0(NGX_LOG_DEBUG_HTTP, c->log, 0, "http wait request handler");
 
@@ -234,79 +305,75 @@ void httplite_request_handler(ngx_event_t *rev) {
         return;
     }
 
-    /**
-     * TODO: This is next line receives a single IP packet of up to size `size` bytes. The `request` is memory allocated on the heap
-     * that can hold the request. The arguments are the connection (c), where to put the data (request->last, since we want to append
-     * to the current request), and the upper limit on the size to read.
-     * 
-     * It will return an integer (n) which tells us how many bytes have been read. We want to continue to read until we have the full request.
-     * Remember to clean up memory and resources as you do this (the provided `httplite_request_realloc` and `httplite_request_free`
-     * functions should help you do this, but they may or may not have bugs in them).
-     */
-    n = c->recv(c, curr->buffer, SLAB_SIZE);
-    curr->size = n;
-    httplite_upstream_configuration_t *upstream_configuration = c->listening->servers;
-    httplite_upstream_t *upstream_elements = upstream_configuration->upstreams.elts;
-    
-    // NOTE: Possible race condition below
-    httplite_upstream_t *upstream = &upstream_elements[upstream_index++ % NUM_UPSTREAMS];
+    n = recv_wrapper(c, curr, rev);
 
-    httplite_refresh_upstream_connection(upstream);
-    ngx_connection_t *upstream_connection = upstream->peer.connection;
-
-    httplite_event_connection_t *connections = ngx_pcalloc(c->pool, sizeof(httplite_event_connection_t));
-    if (!connections) {
-        fprintf(stderr, "Unable to instantiate httplite_event_connection_t pointer.\n");
+    if (n <= 0) {
+        ngx_log_error(NGX_LOG_ALERT, c->log, 0, "failed recv.");
         return;
     }
 
-    connections->client_connection = c;
-    connections->upstream_connection = upstream_connection;
+    /* get request length */
+    ssize_t request_length = find_request_length(curr);
+    if (request_length < 0) {
+        ngx_log_error(NGX_LOG_ALERT, c->log, 0, "unable to find request length.");
+        return;
+    }
 
-    c->data = connections;
-
-    c->read->handler = httplite_empty_read_handler;
-    c->write->handler = httplite_empty_write_handler;
-
-    httplite_send_request_to_upstream(upstream, curr);
-
-    // TODO: Is this a safe assumption? 
-    // https://github.com/quantcast/nginx-layer-6/pull/3#discussion_r1006215672
-    if (n == NGX_AGAIN) {
-
-        if (!rev->timer_set) {
-            ngx_add_timer(rev, 60 * 1000);
-            ngx_reusable_connection(c, 1);
-        }
-
-        if (ngx_handle_read_event(rev, 0) != NGX_OK) {
-            httplite_close_connection(c);
+    /* call receive function until we have read the entire request */
+    int m;
+    while (n < request_length && rev->ready) {
+        if (!httplite_add_slab(list)) {
+            ngx_log_error(NGX_LOG_ALERT, c->log, 0, "unable to add slab.");
             return;
         }
+        m = recv_wrapper(c, list.tail, rev);
 
-        return;
+        if (m < 0) { 
+            ngx_log_error(NGX_LOG_ALERT, c->log, 0, "failed recv.");
+            return; 
+        }
+
+        n += m;
     }
-
-    if (n == NGX_ERROR) {
-        httplite_close_connection(c);
-        return;
-    }
-
-    if (n == 0) {
-        ngx_log_error(NGX_LOG_INFO, c->log, 0,
-                      "client closed connection");
-        httplite_close_connection(c);
-        return;
-    }
-
-    c->log->action = "reading client request line";
-
-    ngx_reusable_connection(c, 0);
 }
 
-// TODO: this function should parse out the request body from the request buffer
-// not sure if these are all the necessary parameters
-ngx_str_t httplite_parse_http_request_body(ngx_buf_t request_buffer) {
-    ngx_str_t str = ngx_string("");
-    return str;
+ssize_t find_request_length(httplite_request_slab_t *slab) {
+    u_char *str, *header, *end_ptr;
+    size_t header_size, l;
+    ssize_t body_size;
+
+    str = slab->buffer;
+    header = ngx_strlcasestrn(str, str + slab->size, (u_char*) LENGTH_HEADER, LENGTH_HEADER_SIZE - 1);
+    /* From nginx documentation:
+    *       ngx_strlcasestrn() is intended to search for static substring
+    *       with known length in string until the argument last. The argument n
+    *       must be length of the second substring - 1.
+    */
+
+    if (header == NULL) {
+        return NGX_ERROR;
+    }
+
+    header += LENGTH_HEADER_SIZE;
+    l = 0;
+
+    /* find size of substring containing value after the header */
+    while (*(header + l) != '\r' && *(header + l) != '\n') {
+        ++l;
+    }
+
+    body_size = ngx_atosz(header, l);
+
+    /* find index of header/body separator */ 
+    end_ptr = (u_char*) ngx_strstr(header + l, HEADER_BODY_SEPARATOR);
+            
+    if (end_ptr == NULL) {
+        return NGX_ERROR;
+    }
+    else {
+        header_size = end_ptr + HEADER_BODY_SEPARATOR_SIZE - str;
+        return body_size + header_size;
+    }
+
+    return NGX_ERROR;
 }
