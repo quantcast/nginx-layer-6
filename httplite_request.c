@@ -7,6 +7,12 @@
 #include "httplite_upstream.h"
 #include "httplite_load_balancer.h"
 
+typedef struct {
+    ngx_connection_t *client_connection;
+    ngx_connection_t *upstream_connection;
+    httplite_request_slab_t *request;
+} httplite_event_connection_t;
+
 httplite_request_list_t httplite_init_list(ngx_connection_t *connection) {
     httplite_request_list_t list = { 0 };
 
@@ -72,6 +78,120 @@ void httplite_close_connection(ngx_connection_t *c)
     ngx_destroy_pool(pool);
 }
 
+void httplite_empty_read_handler() {
+    printf("we are ready to read from the client!\n");
+}
+
+void httplite_empty_write_handler() {
+    printf("we are ready to write to the client!\n");
+}
+
+void httplite_client_handle_wakeup(ngx_event_t *event) {
+    httplite_event_connection_t *connections = event->data;
+    ngx_connection_t *client = connections->client_connection;
+    ngx_connection_t *upstream = connections->upstream_connection;
+
+    if (!upstream->read->ready) {
+        ngx_add_timer(event, 1000);
+        return;
+    }
+
+    ssize_t                    n;
+    httplite_request_list_t    list;
+    httplite_request_slab_t   *curr;
+
+    list = httplite_init_list(client);
+
+    curr = list.head;
+    
+    if (list.head == NULL) {
+        ngx_log_error(NGX_LOG_ALERT, client->log, 0, "unable to allocate space for the request slab.");
+        httplite_close_connection(client);
+        return;
+    }
+
+    if (list.head->buffer == NULL) {
+        ngx_log_error(NGX_LOG_ALERT, client->log, 0, "unable to allocate space for the request string.");
+        httplite_close_connection(client);
+        return;
+    }
+
+    /**
+     * TODO: This is next line receives a single IP packet of up to size `size` bytes. The `request` is memory allocated on the heap
+     * that can hold the request. The arguments are the connection (c), where to put the data (request->last, since we want to append
+     * to the current request), and the upper limit on the size to read.
+     * 
+     * It will return an integer (n) which tells us how many bytes have been read. We want to continue to read until we have the full request.
+     * Remember to clean up memory and resources as you do this (the provided `httplite_request_realloc` and `httplite_request_free`
+     * functions should help you do this, but they may or may not have bugs in them).
+     */
+    n = upstream->recv(upstream, curr->buffer, SLAB_SIZE);
+    curr->size = n;
+
+    client->send(client, curr->buffer, curr->size);
+
+    upstream->read->handler = httplite_empty_read_handler;
+}
+
+void httplite_client_write_handler(ngx_event_t *event) {
+    printf("we are inside the handler\n");
+    httplite_event_connection_t *connections = event->data;
+    ngx_connection_t *client = connections->client_connection;
+    ngx_connection_t *upstream = connections->upstream_connection;
+
+    if (!upstream->read->ready) {
+        printf("inside the not read ready clause\n");
+        ngx_event_t *timer_event = ngx_pcalloc(client->pool, sizeof(ngx_event_t));
+        if (timer_event == NULL) {
+            fprintf(stderr, "Unable to allocate space for timer event.\n");
+            return;
+        }
+
+        timer_event->handler = httplite_client_handle_wakeup;
+        timer_event->data = event->data;
+        timer_event->log = client->log;
+
+        ngx_add_timer(timer_event, 1000);
+        return;
+    }
+
+    ssize_t                    n;
+    httplite_request_list_t    list;
+    httplite_request_slab_t   *curr;
+
+    list = httplite_init_list(client);
+
+    curr = list.head;
+    
+    if (list.head == NULL) {
+        ngx_log_error(NGX_LOG_ALERT, client->log, 0, "unable to allocate space for the request slab.");
+        httplite_close_connection(client);
+        return;
+    }
+
+    if (list.head->buffer == NULL) {
+        ngx_log_error(NGX_LOG_ALERT, client->log, 0, "unable to allocate space for the request string.");
+        httplite_close_connection(client);
+        return;
+    }
+
+    /**
+     * TODO: This is next line receives a single IP packet of up to size `size` bytes. The `request` is memory allocated on the heap
+     * that can hold the request. The arguments are the connection (c), where to put the data (request->last, since we want to append
+     * to the current request), and the upper limit on the size to read.
+     * 
+     * It will return an integer (n) which tells us how many bytes have been read. We want to continue to read until we have the full request.
+     * Remember to clean up memory and resources as you do this (the provided `httplite_request_realloc` and `httplite_request_free`
+     * functions should help you do this, but they may or may not have bugs in them).
+     */
+    n = upstream->recv(upstream, curr->buffer, SLAB_SIZE);
+    curr->size = n;
+
+    client->send(client, curr->buffer, curr->size);
+
+    upstream->read->handler = httplite_empty_read_handler;
+}
+
 // TODO: update this function to reflect new request structure
 void httplite_request_handler(ngx_event_t *rev) {
     ssize_t                    n;
@@ -81,6 +201,7 @@ void httplite_request_handler(ngx_event_t *rev) {
 
     c = rev->data;
 
+    // TODO: Replace with circular queue
     const uint NUM_UPSTREAMS = ((httplite_upstream_configuration_t*)(c->listening->servers))->upstreams.nelts;
     static int upstream_index = 0;
 
@@ -126,12 +247,28 @@ void httplite_request_handler(ngx_event_t *rev) {
     curr->size = n;
     httplite_upstream_configuration_t *upstream_configuration = c->listening->servers;
     httplite_upstream_t *upstream_elements = upstream_configuration->upstreams.elts;
-
+    
     // NOTE: Possible race condition below
-    httplite_send_request_to_upstream(
-        &upstream_elements[upstream_index++ % NUM_UPSTREAMS],
-        curr
-    );
+    httplite_upstream_t *upstream = &upstream_elements[upstream_index++ % NUM_UPSTREAMS];
+
+    httplite_refresh_upstream_connection(upstream);
+    ngx_connection_t *upstream_connection = upstream->peer.connection;
+
+    httplite_event_connection_t *connections = ngx_pcalloc(c->pool, sizeof(httplite_event_connection_t));
+    if (!connections) {
+        fprintf(stderr, "Unable to instantiate httplite_event_connection_t pointer.\n");
+        return;
+    }
+
+    connections->client_connection = c;
+    connections->upstream_connection = upstream_connection;
+
+    c->data = connections;
+
+    c->read->handler = httplite_empty_read_handler;
+    c->write->handler = httplite_empty_write_handler;
+
+    httplite_send_request_to_upstream(upstream, curr);
 
     // TODO: Is this a safe assumption? 
     // https://github.com/quantcast/nginx-layer-6/pull/3#discussion_r1006215672

@@ -60,15 +60,15 @@ ngx_int_t httplite_free_upstream(httplite_upstream_t* upstream) {
 }
 
 void httplite_dummy_read_handler() {
-    printf("we are ready to read!\n");
+    printf("we are ready to read from the upstream!\n");
 }
 
 void httplite_dummy_write_handler() {
-    printf("we are ready to write!\n");
+    printf("we are ready to write to the upstream!\n");
 }
 
-void httplite_initialize_upstream_connection(httplite_upstream_t *upstream) {
-    printf("upstream peer: %p\n", upstream->peer.connection);
+void httplite_refresh_upstream_connection(httplite_upstream_t *upstream) {
+    // TODO: Add testing logic to check if the connection is already made
     ngx_int_t result = ngx_event_connect_peer(&upstream->peer);
     upstream->peer.connection->read->handler = httplite_dummy_read_handler;
     upstream->peer.connection->write->handler = httplite_dummy_write_handler;
@@ -99,7 +99,6 @@ void httplite_handle_send_request_to_upstream(ngx_event_t *event) {
 }
 
 void httplite_send_request_to_upstream(httplite_upstream_t *upstream, httplite_request_slab_t *request) {
-    httplite_initialize_upstream_connection(upstream);
     ngx_connection_t *connection = upstream->peer.connection;
 
     if (!connection) {
