@@ -13,12 +13,6 @@
 #include "httplite_upstream.h"
 #include "httplite_load_balancer.h"
 
-typedef struct {
-    ngx_connection_t *client_connection;
-    ngx_connection_t *upstream_connection;
-    httplite_request_slab_t *request;
-} httplite_event_connection_t;
-
 httplite_request_list_t httplite_init_list(ngx_connection_t *connection) {
     httplite_request_list_t list = { 0 };
 
@@ -85,7 +79,7 @@ void httplite_close_connection(ngx_connection_t *c)
 }
 
 void httplite_empty_read_handler() {
-    printf("we are ready to read from the client!\n");
+    printf("we are ready to read from the upstream in the request handler!\n");
 }
 
 void httplite_empty_write_handler() {
@@ -93,60 +87,55 @@ void httplite_empty_write_handler() {
 }
 
 void httplite_client_handle_wakeup(ngx_event_t *event) {
+    printf("we are inside the client handle wakeup handler\n");
     httplite_event_connection_t *connections = event->data;
     ngx_connection_t *client = connections->client_connection;
     ngx_connection_t *upstream = connections->upstream_connection;
+
+    httplite_request_slab_t *response_slab = ((httplite_event_connection_t*)(upstream->data))->response;
 
     if (!upstream->read->ready) {
         ngx_add_timer(event, 1000);
         return;
     }
 
-    ssize_t                    n;
-    httplite_request_list_t    list;
-    httplite_request_slab_t   *curr;
-
-    list = httplite_init_list(client);
-
-    curr = list.head;
-    
-    if (list.head == NULL) {
-        ngx_log_error(NGX_LOG_ALERT, client->log, 0, "unable to allocate space for the request slab.");
-        httplite_close_connection(client);
-        return;
-    }
-
-    if (list.head->buffer == NULL) {
-        ngx_log_error(NGX_LOG_ALERT, client->log, 0, "unable to allocate space for the request string.");
-        httplite_close_connection(client);
-        return;
-    }
-
-    /**
-     * TODO: This is next line receives a single IP packet of up to size `size` bytes. The `request` is memory allocated on the heap
-     * that can hold the request. The arguments are the connection (c), where to put the data (request->last, since we want to append
-     * to the current request), and the upper limit on the size to read.
-     * 
-     * It will return an integer (n) which tells us how many bytes have been read. We want to continue to read until we have the full request.
-     * Remember to clean up memory and resources as you do this (the provided `httplite_request_realloc` and `httplite_request_free`
-     * functions should help you do this, but they may or may not have bugs in them).
-     */
-    n = upstream->recv(upstream, curr->buffer, SLAB_SIZE);
-    curr->size = n;
-
-    client->send(client, curr->buffer, curr->size);
+    client->send(client, response_slab->buffer, response_slab->size);
 
     upstream->read->handler = httplite_empty_read_handler;
 }
 
-void httplite_client_write_handler(ngx_event_t *event) {
-    printf("we are inside the handler\n");
+void httplite_upstream_read_handler(ngx_event_t *event) {
     httplite_event_connection_t *connections = event->data;
     ngx_connection_t *client = connections->client_connection;
     ngx_connection_t *upstream = connections->upstream_connection;
 
-    if (!upstream->read->ready) {
-        printf("inside the not read ready clause\n");
+    int n;
+
+    httplite_request_slab_t *response_slab = ngx_pcalloc(client->pool, sizeof(httplite_request_slab_t));
+    if (!response_slab) {
+        fprintf(stderr, "Unable to initialize response slab in httplite_upstream_read_handler.\n");
+        return;
+    }
+
+    response_slab->buffer = ngx_pnalloc(client->pool, SLAB_SIZE);
+    if (!response_slab->buffer) {
+        fprintf(stderr, "Unable to initialize buffer space in httplite_upstream_read_handler.\n");
+        return;
+    }
+
+    // read the content from the upstream and store it on the current connection so as to prevent blocking on the upstream connection
+    n = upstream->recv(upstream, response_slab->buffer, SLAB_SIZE);
+    response_slab->size += n;
+
+    printf("upstream response:\n%s\n", response_slab->buffer);
+
+    // make sure that client has copy of the data as well
+    ((httplite_event_connection_t*)(upstream->data))->response = response_slab;
+    client->data = upstream->data;
+
+    // wait until client is write ready to send to client
+    if (!client->write->ready) {
+        printf("inside the not write ready clause\n");
         ngx_event_t *timer_event = ngx_pcalloc(client->pool, sizeof(ngx_event_t));
         if (timer_event == NULL) {
             fprintf(stderr, "Unable to allocate space for timer event.\n");
@@ -160,40 +149,6 @@ void httplite_client_write_handler(ngx_event_t *event) {
         ngx_add_timer(timer_event, 1000);
         return;
     }
-
-    ssize_t                    n;
-    httplite_request_list_t    list;
-    httplite_request_slab_t   *curr;
-
-    list = httplite_init_list(client);
-
-    curr = list.head;
-    
-    if (list.head == NULL) {
-        ngx_log_error(NGX_LOG_ALERT, client->log, 0, "unable to allocate space for the request slab.");
-        httplite_close_connection(client);
-        return;
-    }
-
-    if (list.head->buffer == NULL) {
-        ngx_log_error(NGX_LOG_ALERT, client->log, 0, "unable to allocate space for the request string.");
-        httplite_close_connection(client);
-        return;
-    }
-
-    /**
-     * TODO: This is next line receives a single IP packet of up to size `size` bytes. The `request` is memory allocated on the heap
-     * that can hold the request. The arguments are the connection (c), where to put the data (request->last, since we want to append
-     * to the current request), and the upper limit on the size to read.
-     * 
-     * It will return an integer (n) which tells us how many bytes have been read. We want to continue to read until we have the full request.
-     * Remember to clean up memory and resources as you do this (the provided `httplite_request_realloc` and `httplite_request_free`
-     * functions should help you do this, but they may or may not have bugs in them).
-     */
-    n = upstream->recv(upstream, curr->buffer, SLAB_SIZE);
-    curr->size = n;
-
-    client->send(client, curr->buffer, curr->size);
 
     upstream->read->handler = httplite_empty_read_handler;
 }
@@ -224,11 +179,10 @@ size_t recv_wrapper(ngx_connection_t *c, httplite_request_slab_t *slab, ngx_even
 
     connections->client_connection = c;
     connections->upstream_connection = upstream_connection;
+    connections->request = slab;
 
-    c->data = connections;
-
-    c->read->handler = httplite_empty_read_handler;
-    c->write->handler = httplite_empty_write_handler;
+    upstream_connection->data = connections;
+    upstream_connection->read->handler = httplite_upstream_read_handler;
 
     httplite_send_request_to_upstream(upstream, slab);
 

@@ -70,8 +70,6 @@ void httplite_dummy_write_handler() {
 void httplite_refresh_upstream_connection(httplite_upstream_t *upstream) {
     // TODO: Add testing logic to check if the connection is already made
     ngx_int_t result = ngx_event_connect_peer(&upstream->peer);
-    upstream->peer.connection->read->handler = httplite_dummy_read_handler;
-    upstream->peer.connection->write->handler = httplite_dummy_write_handler;
 
     if (result != NGX_OK && result != NGX_AGAIN) {
         fprintf(stderr, "Something went wrong when creating connection.\n");
@@ -85,7 +83,7 @@ void httplite_handle_send_request_to_upstream(ngx_event_t *event) {
     httplite_upstream_t *u;
 
     c = event->data;
-    r = c->data;
+    r = ((httplite_event_connection_t*) c->data)->request;
 
     u = r->upstream;
     c = u->peer.connection;
@@ -108,7 +106,7 @@ void httplite_send_request_to_upstream(httplite_upstream_t *upstream, httplite_r
         return;
     }
     
-    connection->data = request;
+    ((httplite_event_connection_t*) connection->data)->request = request;
     request->upstream = upstream;
     
     connection->write->handler = httplite_handle_send_request_to_upstream;
