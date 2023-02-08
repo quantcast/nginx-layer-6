@@ -61,4 +61,6 @@ ssize_t find_request_length(httplite_request_slab_t *slab);
 */
 size_t recv_wrapper(ngx_connection_t *c, httplite_request_slab_t *request, ngx_event_t *rev);
 
+void httplite_client_handle_wakeup(ngx_event_t *event);
+
 #endif

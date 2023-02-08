@@ -86,26 +86,9 @@ void httplite_empty_write_handler() {
     printf("we are ready to write to the client!\n");
 }
 
-void httplite_client_handle_wakeup(ngx_event_t *event) {
-    printf("we are inside the client handle wakeup handler\n");
-    httplite_event_connection_t *connections = event->data;
-    ngx_connection_t *client = connections->client_connection;
-    ngx_connection_t *upstream = connections->upstream_connection;
-
-    httplite_request_slab_t *response_slab = ((httplite_event_connection_t*)(upstream->data))->response;
-
-    if (!upstream->read->ready) {
-        ngx_add_timer(event, 1000);
-        return;
-    }
-
-    client->send(client, response_slab->buffer, response_slab->size);
-
-    upstream->read->handler = httplite_empty_read_handler;
-}
-
 void httplite_upstream_read_handler(ngx_event_t *event) {
-    httplite_event_connection_t *connections = event->data;
+    ngx_connection_t *connection = event->data;
+    httplite_event_connection_t *connections = connection->data;
     ngx_connection_t *client = connections->client_connection;
     ngx_connection_t *upstream = connections->upstream_connection;
 
@@ -127,7 +110,7 @@ void httplite_upstream_read_handler(ngx_event_t *event) {
     n = upstream->recv(upstream, response_slab->buffer, SLAB_SIZE);
     response_slab->size += n;
 
-    printf("upstream response:\n%s\n", response_slab->buffer);
+    // printf("upstream response:\n%s\n", response_slab->buffer);
 
     // make sure that client has copy of the data as well
     ((httplite_event_connection_t*)(upstream->data))->response = response_slab;
@@ -135,21 +118,12 @@ void httplite_upstream_read_handler(ngx_event_t *event) {
 
     // wait until client is write ready to send to client
     if (!client->write->ready) {
-        printf("inside the not write ready clause\n");
-        ngx_event_t *timer_event = ngx_pcalloc(client->pool, sizeof(ngx_event_t));
-        if (timer_event == NULL) {
-            fprintf(stderr, "Unable to allocate space for timer event.\n");
-            return;
-        }
-
-        timer_event->handler = httplite_client_handle_wakeup;
-        timer_event->data = event->data;
-        timer_event->log = client->log;
-
-        ngx_add_timer(timer_event, 1000);
+        printf("client not ready to write yet\n");
+        ngx_add_timer(event, 1000);
         return;
     }
 
+    client->send(client, response_slab->buffer, response_slab->size);
     upstream->read->handler = httplite_empty_read_handler;
 }
 

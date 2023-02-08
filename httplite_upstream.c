@@ -110,6 +110,7 @@ void httplite_send_request_to_upstream(httplite_upstream_t *upstream, httplite_r
     request->upstream = upstream;
     
     connection->write->handler = httplite_handle_send_request_to_upstream;
+    // connection->read->handler = httplite_dummy_read_handler;
     if (connection->write->ready) {
         connection->send(connection, request->buffer, request->size);
     }
