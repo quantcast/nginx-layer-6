@@ -88,8 +88,6 @@ void httplite_handle_send_request_to_upstream(ngx_event_t *event) {
     u = r->upstream;
     c = u->peer.connection;
 
-    printf("%s\n", r->buffer);
-
     c->send(c, r->buffer, r->size);
 
     // after sending the message, prevent more of the same messages from sending

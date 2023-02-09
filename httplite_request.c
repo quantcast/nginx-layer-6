@@ -110,8 +110,6 @@ void httplite_upstream_read_handler(ngx_event_t *event) {
     n = upstream->recv(upstream, response_slab->buffer, SLAB_SIZE);
     response_slab->size += n;
 
-    // printf("upstream response:\n%s\n", response_slab->buffer);
-
     // make sure that client has copy of the data as well
     ((httplite_event_connection_t*)(upstream->data))->response = response_slab;
     client->data = upstream->data;
