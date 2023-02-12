@@ -33,6 +33,7 @@ httplite_request_list_t httplite_init_list(ngx_connection_t *connection) {
     list.head = head;
     list.tail = head;
     list.connection = connection;
+    list.next = NULL;
 
     return list;
 }
@@ -161,33 +162,59 @@ void httplite_request_handler(ngx_event_t *rev) {
         return;
     }
 
-    /* get request length */
-    ssize_t request_length = find_request_length(curr);
-    if (request_length < 0) {
-        ngx_log_error(NGX_LOG_ALERT, c->log, 0, "unable to find request length.");
-        return;
-    }
+    // ------------------------
 
-    /* call receive function until we have read the entire request */
-    int m;
-    while (n < request_length && rev->ready) {
-        if (!httplite_add_slab(list)) {
-            ngx_log_error(NGX_LOG_ALERT, c->log, 0, "unable to add slab.");
-            return;
+    if (n < SLAB_SIZE) {
+        split_request(&list);
+    } else {
+        // there might be a possibility that n > slab_size: we will test that
+        while (n == SLAB_SIZE) {
+            if (!httplite_add_slab(list)) {
+                ngx_log_error(NGX_LOG_ALERT, c->log, 0, "unable to add slab.");
+                return;
+            }
+
+            n = recv_wrapper(c, list.tail, rev);
+
+            if (n < 0) { 
+                ngx_log_error(NGX_LOG_ALERT, c->log, 0, "failed recv.");
+                return; 
+            }
         }
-        m = recv_wrapper(c, list.tail, rev);
 
-        if (m < 0) { 
-            ngx_log_error(NGX_LOG_ALERT, c->log, 0, "failed recv.");
-            return; 
-        }
-
-        n += m;
+        split_request(&list);
     }
+    
+    // ----------------------
+
+    // /* get request length */
+    // ssize_t request_length = find_request_length(curr);
+    // if (request_length < 0) {
+    //     ngx_log_error(NGX_LOG_ALERT, c->log, 0, "unable to find request length.");
+    //     return;
+    // }
+
+    // /* call receive function until we have read the entire request */
+    // int m;
+    // while (n < request_length && rev->ready) {
+    //     if (!httplite_add_slab(list)) {
+    //         ngx_log_error(NGX_LOG_ALERT, c->log, 0, "unable to add slab.");
+    //         return;
+    //     }
+    //     m = recv_wrapper(c, list.tail, rev);
+
+    //     if (m < 0) { 
+    //         ngx_log_error(NGX_LOG_ALERT, c->log, 0, "failed recv.");
+    //         return; 
+    //     }
+
+    //     n += m;
+    // }
+    
 }
 
 ssize_t find_request_length(httplite_request_slab_t *slab) {
-    u_char *str, *curr, *end_ptr;
+    u_char *str, *curr;
     size_t header_size, l;
     ssize_t body_size;
 
@@ -239,6 +266,54 @@ ssize_t find_request_length(httplite_request_slab_t *slab) {
     return NGX_ERROR;
 }
 
+ssize_t find_request_length2(u_char *str, ssize_t n) {
+    u_char *str, *curr;
+    size_t header_size, l;
+    ssize_t body_size;
+
+    curr = str;
+    body_size = 0;
+
+    curr = ngx_strlcasestrn(str, str + n, (u_char*) LENGTH_HEADER, LENGTH_HEADER_SIZE - 1);
+    /* From nginx documentation:
+    *       ngx_strlcasestrn() is intended to search for static substring
+    *       with known length in string until the argument last. The argument n
+    *       must be length of the second substring - 1.
+    */
+
+    if (curr != NULL) {
+        curr += LENGTH_HEADER_SIZE;
+        l = 0;
+
+        /* find size of substring containing value after the header */
+        while (*(curr + l) != '\r' && *(curr + l) != '\n') {
+            ++l;
+        }
+
+        body_size = ngx_atosz(curr, l);
+
+        curr += l;
+    }
+
+    /* find index of header separator */ 
+    curr = (u_char*) ngx_strstr(curr, HEADER_BODY_SEPARATOR);
+            
+    if (curr == NULL) {
+        return NGX_ERROR;
+    }
+    else {
+        curr += HEADER_BODY_SEPARATOR_SIZE;
+        header_size = curr - str;
+        
+        curr += body_size + 1;
+        // TODO: what if end of body is in the next slab? move this to recv wrapper
+
+        return body_size + header_size;
+    }
+
+    return NGX_ERROR;
+}
+
 size_t check_http_method(u_char *str) {
     if (ngx_strncmp(str, "GET", 3) == 0 ||
             ngx_strncmp(str, "POST", 4) == 0 ||
@@ -253,4 +328,63 @@ size_t check_http_method(u_char *str) {
         return 1;
     }
     return 0;
+}
+
+// httplite_request_list_t *make_request_queue(ngx_connection_t) {
+//     // call recv
+//     // if n < 
+// }
+
+/* given a list of slabs, break it up into a list of lists, each one containing
+a single request */
+httplite_request_list_t *split_request (httplite_request_list_t *list) {
+    u_char* curr, str;
+    httplite_request_slab_t* slab;
+    httplite_request_list_t result;
+    size_t l, header_size; 
+    ssize_t body_size;
+
+    slab = list->head;
+    result = httplite_init_list(list->connection);
+    body_size = 0;
+    header_size = 0;
+
+    while (slab != NULL) {
+        str = slab->buffer;
+        curr = ngx_strlcasestrn(str, str + slab->size, (u_char*) LENGTH_HEADER, LENGTH_HEADER_SIZE - 1);
+
+        if (curr != NULL) {
+            curr += LENGTH_HEADER_SIZE;
+            l = 0;
+
+            /* find size of substring containing value after the header */
+            while (*(curr + l) != '\r' && *(curr + l) != '\n') {
+                ++l;
+            }
+
+            body_size = ngx_atosz(curr, l);
+
+            curr += l;
+        }
+
+        /* find index of header separator */ 
+        curr = (u_char*) ngx_strstr(curr, HEADER_BODY_SEPARATOR);
+
+        if (curr == NULL) {
+            return NGX_ERROR;
+        }
+        else {
+            curr += HEADER_BODY_SEPARATOR_SIZE;
+            header_size = curr - str;
+            
+            curr += body_size + 1;
+            // TODO: what if end of body is in the next slab? 
+
+            return body_size + header_size;
+        }
+
+        slab = slab->next;
+    }
+
+    return &result;
 }

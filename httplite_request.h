@@ -18,12 +18,18 @@ typedef struct httplite_request_list_s {
     httplite_request_slab_t *tail;
     //httplite_connection_t *connection;           /* A pointer to the parent connection */
     ngx_connection_t *connection;
+    httplite_request_list_t *next;                 /* Points to next request in pipeline queue */
 } httplite_request_list_t;
 
 typedef struct httplite_connection_s {
     ngx_connection_t *ngx_connection;
     ngx_queue_t request_q;                  /* maintains order of pipelined requests */
 } httplite_connection_t;
+
+// typedef struct httplite_request_queue_s {
+//     httplite_request_list_t *head;
+// } httplite_request_queue_t;
+
 
 /**
  * @returns new httplite linked list of slabs, where each slab contains a
