@@ -50,17 +50,13 @@ void httplite_server_init_connection(ngx_connection_t *c)
         return;
     }
 
-    ngx_add_timer(rev, 60 * 1000);
+    ngx_add_timer(rev, DEFAULT_SERVER_TIMEOUT);
     ngx_reusable_connection(c, 1);
 
     if (ngx_handle_read_event(rev, 0) != NGX_OK) {
         httplite_close_connection(c);
         return;
     }
-}
-
-void httplite_dummy_read_handler_x() {
-    printf("read\n");
 }
 
 ngx_int_t httplite_server_init_listening(ngx_conf_t *cf, ngx_int_t port)
@@ -76,16 +72,10 @@ ngx_int_t httplite_server_init_listening(ngx_conf_t *cf, ngx_int_t port)
         return NGX_ERROR;
     }
     
-    ngx_memzero(socket_address, socket_length);
     socket_address->sin_family = AF_INET;
     socket_address->sin_port = htons(port);
     socket_address->sin_len = socket_length;
     socket_address->sin_addr.s_addr = INADDR_ANY;
-
-    // ls = ngx_create_listening(cf, (struct sockaddr*)socket_address, socket_length);
-    // ls->servers = ngx_array_create(cf->pool, 4, sizeof(httplite_upstream_configuration_t*));
-    // httplite_upstream_configuration_t** upstream_configuration = (httplite_upstream_configuration_t**) ngx_array_push(ls->servers);
-    // *upstream_configuration = httplite_conf_get_module_upstream_conf(cf, httplite_http_module);
 
     ls = ngx_create_listening(cf, (struct sockaddr*)socket_address, socket_length);
     ls->servers = httplite_conf_get_module_upstream_conf(cf, httplite_http_module);

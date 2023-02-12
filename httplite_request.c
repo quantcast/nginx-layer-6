@@ -4,14 +4,12 @@
 #include <ngx_event.h>
 
 #include "httplite_request.h"
+#include "httplite_upstream.h"
 
 #define LENGTH_HEADER "\nContent-Length: "
 #define LENGTH_HEADER_SIZE strlen(LENGTH_HEADER)
 #define HEADER_BODY_SEPARATOR "\r\n\r\n"
 #define HEADER_BODY_SEPARATOR_SIZE strlen(HEADER_BODY_SEPARATOR)
-
-#include "httplite_upstream.h"
-#include "httplite_load_balancer.h"
 
 httplite_request_list_t httplite_init_list(ngx_connection_t *connection) {
     httplite_request_list_t list = { 0 };
@@ -117,7 +115,7 @@ void httplite_upstream_read_handler(ngx_event_t *event) {
     // wait until client is write ready to send to client
     if (!client->write->ready) {
         printf("client not ready to write yet\n");
-        ngx_add_timer(event, 1000);
+        ngx_add_timer(event, DEFAULT_CLIENT_WRITE_TIMEOUT);
         return;
     }
 
@@ -160,7 +158,7 @@ size_t recv_wrapper(ngx_connection_t *c, httplite_request_slab_t *slab, ngx_even
 
     if (n == NGX_AGAIN) {
         if (!rev->timer_set) {
-            ngx_add_timer(rev, 60 * 1000);
+            ngx_add_timer(rev, DEFAULT_SERVER_TIMEOUT);
             ngx_reusable_connection(c, 1);
         }
 
@@ -232,6 +230,7 @@ void httplite_request_handler(ngx_event_t *rev) {
     }
 
     n = recv_wrapper(c, curr, rev);
+    printf("%s\n", curr->buffer);
 
     if (n <= 0) {
         ngx_log_error(NGX_LOG_ALERT, c->log, 0, "failed recv.");

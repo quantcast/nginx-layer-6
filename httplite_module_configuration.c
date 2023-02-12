@@ -1,6 +1,5 @@
 #include <nginx.h>
 #include <ngx_core.h>
-// #include "httplite_server.h"
 
 #include "httplite_module_configuration.h"
 

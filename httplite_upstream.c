@@ -6,33 +6,37 @@
 #include "httplite_upstream.h"
 #include "httplite_upstream_module_configuration.h"
 
-void httplite_empty_upstream_handler() {
-
-}
+static void httplite_empty_upstream_handler() { }
 
 httplite_upstream_t *httplite_create_upstream(httplite_upstream_configuration_t *uscf, char *address, ngx_int_t port) {
-    httplite_upstream_t *upstream = ngx_array_push(&uscf->upstreams);
+    httplite_upstream_t *upstream;
+    struct sockaddr_in *socket_address;
+    size_t socket_length;
+    ngx_str_t *name;
+    
+    upstream = ngx_array_push(&uscf->upstreams);
 
     if (!upstream) {
         return NULL;
     }
 
-    struct sockaddr_in *socket_address;
-    size_t socket_length = sizeof(struct sockaddr_in);
+    socket_length = sizeof(struct sockaddr_in);
     socket_address = ngx_pcalloc(uscf->pool, socket_length);
+
     if (socket_address == NULL) {
         fprintf(stderr, "Failed to allocate socket address\n");
         return NULL;
     }
-    ngx_memzero(socket_address, socket_length);
+
     socket_address->sin_family = AF_INET;
-    #if __APPLE__
-        socket_address->sin_len = socket_length;
-    #endif
+#if (NGX_DARWIN)
+    socket_address->sin_len = socket_length;
+#endif
     socket_address->sin_port = htons(port);
+
     inet_pton(AF_INET, address, &socket_address->sin_addr);
 
-    ngx_str_t *name = ngx_pcalloc(uscf->pool, sizeof(ngx_str_t));
+    name = ngx_pcalloc(uscf->pool, sizeof(ngx_str_t));
     name->data = ngx_pnalloc(uscf->pool, 7);
     name->data = (u_char *)"server";
     name->len = 6;
@@ -57,14 +61,6 @@ ngx_int_t httplite_free_upstream(httplite_upstream_t* upstream) {
         return NGX_DECLINED;
     }
     return NGX_OK;
-}
-
-void httplite_dummy_read_handler() {
-    printf("we are ready to read from the upstream!\n");
-}
-
-void httplite_dummy_write_handler() {
-    printf("we are ready to write to the upstream!\n");
 }
 
 void httplite_refresh_upstream_connection(httplite_upstream_t *upstream) {
@@ -108,7 +104,6 @@ void httplite_send_request_to_upstream(httplite_upstream_t *upstream, httplite_r
     request->upstream = upstream;
     
     connection->write->handler = httplite_handle_send_request_to_upstream;
-    // connection->read->handler = httplite_dummy_read_handler;
     if (connection->write->ready) {
         connection->send(connection, request->buffer, request->size);
     }

@@ -7,7 +7,9 @@
 
 #include "httplite_upstream.h"
 
-#define SLAB_SIZE 1500      /* MTU size */
+#define SLAB_SIZE 1500                              /* MTU size */
+#define DEFAULT_SERVER_TIMEOUT          (60*1000)   /* Default timeout for server to be read ready */
+#define DEFAULT_CLIENT_WRITE_TIMEOUT    (60*1000)   /* Default timeout for server to be read ready */
 
 typedef struct httplite_request_slab_s {
     u_char *buffer;                         /* A pointer to the memory holding the request string */
