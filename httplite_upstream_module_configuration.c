@@ -46,6 +46,7 @@ httplite_create_upstream_configuration(ngx_conf_t *cf)
     cucf->balancing_algorithm = NGX_CONF_UNSET;
     ngx_array_init(&cucf->upstreams, cf->pool, 1, sizeof(httplite_upstream_t));
     cucf->pool = ngx_create_pool(NGX_DEFAULT_POOL_SIZE, cf->log);
+    cucf->upstream_index = 0;
 
     return cucf;
 }

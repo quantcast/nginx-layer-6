@@ -124,24 +124,28 @@ void httplite_upstream_read_handler(ngx_event_t *event) {
 }
 
 /* Assumes incoming slab is empty (writes to buffer pointer, overwriting anything there) */
-size_t recv_wrapper(ngx_connection_t *c, httplite_request_slab_t *slab, ngx_event_t *rev) {
+size_t recv_wrapper(ngx_connection_t *c, httplite_request_slab_t *slab, ngx_event_t *rev, ngx_atomic_t upstream_index) {
+    httplite_upstream_configuration_t *upstream_configuration;
+    httplite_upstream_t *upstream_elements;
+    httplite_upstream_t *upstream;
+    ngx_connection_t *upstream_connection;
+    httplite_event_connection_t *connections;
+    const int NUM_UPSTREAMS = ((httplite_upstream_configuration_t*)(c->listening->servers))->upstreams.nelts;
     int n;
 
-    const int NUM_UPSTREAMS = ((httplite_upstream_configuration_t*)(c->listening->servers))->upstreams.nelts;
-    static int upstream_index = 0;
-    
     n = c->recv(c, slab->buffer, SLAB_SIZE);
 
-    httplite_upstream_configuration_t *upstream_configuration = c->listening->servers;
-    httplite_upstream_t *upstream_elements = upstream_configuration->upstreams.elts;
+    upstream_configuration = c->listening->servers;
+    upstream_elements = upstream_configuration->upstreams.elts;
     
     // NOTE: Possible race condition below
-    httplite_upstream_t *upstream = &upstream_elements[upstream_index++ % NUM_UPSTREAMS];
+    upstream = &upstream_elements[upstream_index % NUM_UPSTREAMS];
 
     httplite_refresh_upstream_connection(upstream);
-    ngx_connection_t *upstream_connection = upstream->peer.connection;
 
-    httplite_event_connection_t *connections = ngx_pcalloc(c->pool, sizeof(httplite_event_connection_t));
+    upstream_connection = upstream->peer.connection;
+
+    connections = ngx_pcalloc(c->pool, sizeof(httplite_event_connection_t));
     if (!connections) {
         fprintf(stderr, "Unable to instantiate httplite_event_connection_t pointer.\n");
         return NGX_ERROR;
@@ -197,8 +201,10 @@ void httplite_request_handler(ngx_event_t *rev) {
     httplite_request_list_t    list;
     httplite_request_slab_t   *curr;
     ngx_connection_t          *c;
-
+    ngx_atomic_t              *upstream_index;
+    
     c = rev->data;
+    upstream_index = &((httplite_upstream_configuration_t*)(c->listening->servers))->upstream_index;
 
     ngx_log_debug0(NGX_LOG_DEBUG_HTTP, c->log, 0, "http wait request handler");
 
@@ -229,8 +235,7 @@ void httplite_request_handler(ngx_event_t *rev) {
         return;
     }
 
-    n = recv_wrapper(c, curr, rev);
-    printf("%s\n", curr->buffer);
+    n = recv_wrapper(c, curr, rev, *upstream_index);
 
     if (n <= 0) {
         ngx_log_error(NGX_LOG_ALERT, c->log, 0, "failed recv.");
@@ -251,7 +256,7 @@ void httplite_request_handler(ngx_event_t *rev) {
             ngx_log_error(NGX_LOG_ALERT, c->log, 0, "unable to add slab.");
             return;
         }
-        m = recv_wrapper(c, list.tail, rev);
+        m = recv_wrapper(c, list.tail, rev, *upstream_index);
 
         if (m < 0) { 
             ngx_log_error(NGX_LOG_ALERT, c->log, 0, "failed recv.");
@@ -260,6 +265,10 @@ void httplite_request_handler(ngx_event_t *rev) {
 
         n += m;
     }
+
+    printf("adding one to upstream_index: %p - old index: %lu\n", upstream_index, *upstream_index);
+    ngx_atomic_fetch_add(upstream_index, 1);
+    printf("added one to upstream_index: %p - new index: %lu\n", upstream_index, *upstream_index);
 }
 
 ssize_t find_request_length(httplite_request_slab_t *slab) {

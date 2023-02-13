@@ -18,6 +18,7 @@ typedef struct {
     ngx_array_t                         upstreams;
     load_balance_method_t               balancing_algorithm;
     ngx_pool_t                         *pool;
+    ngx_atomic_t                        upstream_index;
 } httplite_upstream_configuration_t;
 
 char* httplite_core_upstream(ngx_conf_t *cf, ngx_command_t *cmd, void *dummy);
