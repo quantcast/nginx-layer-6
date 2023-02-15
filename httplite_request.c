@@ -388,3 +388,35 @@ httplite_request_list_t *split_request (httplite_request_list_t *list) {
 
     return &result;
 }
+
+/*Helper methods to print out requests in the queue*/
+
+void printRequests (httplite_request_list_t *requests) {
+
+    httplite_request_list_t *curr = requests->head
+    size_t i = 0;
+    while(curr != NULL){
+        printf("%s","Starting to print request");
+        printf("%zu", i)
+        printf("%s\n", " \n");
+        printf("%s", printRequest(curr));
+        print("%s", "Done with the request");
+        i++;
+        curr = curr->next;
+    }
+
+}
+
+u_char printRequest(httplite_request_list_t *request) {
+    u_char *data;
+    httplite_request_slab_t *curr = request->head;
+    httplite_request_slab_t *tail= request->tail;
+
+    while(curr != tail) {
+        data += curr->buffer;
+        curr = curr->next;
+    }
+
+    data += tail;
+    return data;
+}
