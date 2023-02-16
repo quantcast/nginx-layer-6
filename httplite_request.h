@@ -18,7 +18,7 @@ typedef struct httplite_request_list_s {
     httplite_request_slab_t *tail;
     //httplite_connection_t *connection;           /* A pointer to the parent connection */
     ngx_connection_t *connection;
-    httplite_request_list_t *next;                 /* Points to next request in pipeline queue */
+   struct httplite_request_list_s *next;                 /* Points to next request in pipeline queue */
 } httplite_request_list_t;
 
 typedef struct httplite_connection_s {
@@ -42,7 +42,7 @@ httplite_request_list_t httplite_init_list(ngx_connection_t *connection);
  * 
  * @returns A pointer to the new slab in the list
 */
-httplite_request_slab_t *httplite_add_slab(httplite_request_list_t list);
+httplite_request_slab_t *httplite_add_slab(httplite_request_list_t *list);
 
 void httplite_request_handler(ngx_event_t *rev);
 void ngx_httplite_close_connection(ngx_connection_t *c);
@@ -67,5 +67,8 @@ size_t recv_wrapper(ngx_connection_t *c, httplite_request_slab_t *request, ngx_e
  * @returns 1 if str is an HTTP method, 0 if str is not an HTTP method
 */
 size_t check_http_method(u_char *str);
+
+void printRequests (httplite_request_list_t *requests);
+void printRequest(httplite_request_list_t *request);
 
 #endif
