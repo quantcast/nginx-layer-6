@@ -407,8 +407,8 @@ void printRequests (httplite_request_list_t *requests) {
 
 }
 
-u_char printRequest(httplite_request_list_t *request) {
-    u_char *data;
+u_char *printRequest(httplite_request_list_t *request) {
+    u_char data;
     httplite_request_slab_t *curr = request->head;
     httplite_request_slab_t *tail= request->tail;
 
@@ -418,5 +418,5 @@ u_char printRequest(httplite_request_list_t *request) {
     }
 
     data += tail;
-    return data;
+    return &data;
 }
