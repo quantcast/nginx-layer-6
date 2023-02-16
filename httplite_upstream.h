@@ -12,6 +12,7 @@
 typedef struct httplite_upstream_s {
     ngx_peer_connection_t peer;
     ngx_pool_t *pool;
+    int         free;
 } httplite_upstream_t;
 
 httplite_upstream_t* httplite_create_upstream(httplite_upstream_configuration_t *uscf, char *address, ngx_int_t port);

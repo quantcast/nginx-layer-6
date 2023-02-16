@@ -127,13 +127,13 @@ void httplite_upstream_read_handler(ngx_event_t *event) {
 size_t recv_wrapper(ngx_connection_t *c, httplite_request_slab_t *slab, ngx_event_t *rev) {
     int n;
 
-    const int NUM_UPSTREAMS = ((httplite_upstream_configuration_t*)(c->listening->servers))->upstreams.nelts;
+    const int NUM_UPSTREAMS = ((httplite_upstream_configuration_t*)(c->listening->servers))->connection_pool->upstream_pools->nelts;
     static int upstream_index = 0;
     
     n = c->recv(c, slab->buffer, SLAB_SIZE);
 
     httplite_upstream_configuration_t *upstream_configuration = c->listening->servers;
-    httplite_upstream_t *upstream_elements = upstream_configuration->upstreams.elts;
+    httplite_upstream_t *upstream_elements = upstream_configuration->connection_pool.elts;
     
     // NOTE: Possible race condition below
     httplite_upstream_t *upstream = &upstream_elements[upstream_index++ % NUM_UPSTREAMS];

@@ -14,11 +14,11 @@ httplite_upstream_t *httplite_create_upstream(httplite_upstream_configuration_t 
     size_t socket_length;
     ngx_str_t *name;
     
-    upstream = ngx_array_push(&uscf->upstreams);
+    // upstream = ngx_array_push(&uscf->upstreams);
 
-    if (!upstream) {
-        return NULL;
-    }
+    // if (!upstream) {
+    //     return NULL;
+    // }
 
     socket_length = sizeof(struct sockaddr_in);
     socket_address = ngx_pcalloc(uscf->pool, socket_length);
