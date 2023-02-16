@@ -45,16 +45,16 @@ httplite_create_upstream_configuration(ngx_conf_t *cf)
         return NULL;
     }
 
-    cucf->connection_pool = pcalloc(cf->pool, sizeof(httplite_connection_pool_t));
+    cucf->connection_pool = ngx_pcalloc(cf->pool, sizeof(httplite_connection_pool_t));
     if (!cucf->connection_pool) {
         fprintf(stderr, "Unable to allocate space for connection pool.\n");
         return NULL;
     }
 
-    cucf->connection_pool->upstream_pools = ngx_array_create(cf->pool, 0, sizeof(httplite_upstream_pool_t));
-    cucf->connection_pool->pool_index = NGX_CONF_UNSET_UINT;
+    cucf->connection_pool->upstream_pools = ngx_array_create(cf->pool, 4, sizeof(httplite_upstream_pool_t));
+    cucf->connection_pool->pool_index = 0;
 
-    cucf->balancing_algorithm = NGX_CONF_UNSET;
+    cucf->balancing_algorithm = 0;
     cucf->pool = ngx_create_pool(NGX_DEFAULT_POOL_SIZE, cf->log);
 
     return cucf;
@@ -64,21 +64,19 @@ char* httplite_parse_upstream_server(ngx_conf_t *cf, ngx_command_t *cmd, void *d
     httplite_upstream_configuration_t *cucf = httplite_conf_get_module_upstream_conf(cf, httplite_http_module);
     ngx_str_t *value;
     char *upstream_server, *port_str;
-    ngx_uint_t i, port;
+    ngx_uint_t i, port, server_len;
     ngx_uint_t num_connections = DEFAULT_CONNECTIONS;
     
-    ngx_array_t *upstreams;
     httplite_upstream_pool_t *upstream_pool;
-    httplite_upstream_t *curr_upstream;
 
     value = cf->args->elts;
 
-    char *upstream_server = (char*)value[1].data;
-    char *port_str = strstr(upstream_server, ":") + 1;
-    port = atoi(port);
+    upstream_server = (char*)value[1].data;
+    port_str = strstr(upstream_server, ":") + 1;
+    port = atoi(port_str);
 
     /* parsing the port number from the first argument */
-    int server_len = port_str - upstream_server;
+    server_len = port_str - upstream_server;
     char server[server_len];
     memset(server, 0, server_len);
     strncpy(server, upstream_server, server_len - 1);
@@ -94,12 +92,11 @@ char* httplite_parse_upstream_server(ngx_conf_t *cf, ngx_command_t *cmd, void *d
     }
 
     upstream_pool = ngx_array_push(cucf->connection_pool->upstream_pools);
-    upstreams = ngx_array_create(cucf->pool, num_connections, sizeof(httplite_upstream_t));
-    upstream_pool->upstreams = upstreams;
-    
+    upstream_pool->upstreams = ngx_array_create(cucf->pool, num_connections, sizeof(httplite_upstream_t));
+    upstream_pool->upstream_index = 0;
+
     for (i = 0; i < num_connections; i++)  {
-        curr_upstream = ngx_array_push(upstreams);
-        *curr_upstream = *httplite_create_upstream(cucf, server, port);
+        httplite_create_upstream(upstream_pool->upstreams, server, port, cucf->pool);
     }
 
     return NGX_CONF_OK;

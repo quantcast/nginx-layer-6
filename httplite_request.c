@@ -126,17 +126,13 @@ void httplite_upstream_read_handler(ngx_event_t *event) {
 /* Assumes incoming slab is empty (writes to buffer pointer, overwriting anything there) */
 size_t recv_wrapper(ngx_connection_t *c, httplite_request_slab_t *slab, ngx_event_t *rev) {
     int n;
-
-    const int NUM_UPSTREAMS = ((httplite_upstream_configuration_t*)(c->listening->servers))->connection_pool->upstream_pools->nelts;
-    static int upstream_index = 0;
-    
     n = c->recv(c, slab->buffer, SLAB_SIZE);
 
-    httplite_upstream_configuration_t *upstream_configuration = c->listening->servers;
-    httplite_upstream_t *upstream_elements = upstream_configuration->connection_pool.elts;
-    
-    // NOTE: Possible race condition below
-    httplite_upstream_t *upstream = &upstream_elements[upstream_index++ % NUM_UPSTREAMS];
+    httplite_connection_pool_t *connection_pool;
+    httplite_upstream_t *upstream;
+
+    connection_pool = ((httplite_upstream_configuration_t*)(c->listening->servers))->connection_pool;
+    upstream = fetch_upstream(connection_pool);
 
     httplite_refresh_upstream_connection(upstream);
     ngx_connection_t *upstream_connection = upstream->peer.connection;

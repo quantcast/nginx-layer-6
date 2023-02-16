@@ -8,20 +8,20 @@
 
 static void httplite_empty_upstream_handler() { }
 
-httplite_upstream_t *httplite_create_upstream(httplite_upstream_configuration_t *uscf, char *address, ngx_int_t port) {
+httplite_upstream_t *httplite_create_upstream(ngx_array_t *arr, char *address, ngx_int_t port, ngx_pool_t *pool) {
     httplite_upstream_t *upstream;
     struct sockaddr_in *socket_address;
     size_t socket_length;
     ngx_str_t *name;
     
-    // upstream = ngx_array_push(&uscf->upstreams);
+    upstream = ngx_array_push(arr);
 
-    // if (!upstream) {
-    //     return NULL;
-    // }
+    if (!upstream) {
+        return NULL;
+    }
 
     socket_length = sizeof(struct sockaddr_in);
-    socket_address = ngx_pcalloc(uscf->pool, socket_length);
+    socket_address = ngx_pcalloc(pool, socket_length);
 
     if (socket_address == NULL) {
         fprintf(stderr, "Failed to allocate socket address\n");
@@ -36,12 +36,12 @@ httplite_upstream_t *httplite_create_upstream(httplite_upstream_configuration_t 
 
     inet_pton(AF_INET, address, &socket_address->sin_addr);
 
-    name = ngx_pcalloc(uscf->pool, sizeof(ngx_str_t));
-    name->data = ngx_pnalloc(uscf->pool, 7);
+    name = ngx_pcalloc(pool, sizeof(ngx_str_t));
+    name->data = ngx_pnalloc(pool, 7);
     name->data = (u_char *)"server";
     name->len = 6;
 
-    upstream->pool = uscf->pool;
+    upstream->pool = pool;
     upstream->peer.sockaddr = (struct sockaddr*)socket_address;
     upstream->peer.socklen = socket_length;
     upstream->peer.name = name;
@@ -107,4 +107,29 @@ void httplite_send_request_to_upstream(httplite_upstream_t *upstream, httplite_r
     if (connection->write->ready) {
         connection->send(connection, request->buffer, request->size);
     }
+}
+
+httplite_upstream_t* fetch_upstream(httplite_connection_pool_t *connection_pool) {
+    httplite_upstream_pool_t *upstream_pool;
+    httplite_upstream_t *upstream;
+
+    ngx_atomic_t upstream_pool_index, upstream_index;
+    ngx_uint_t num_upstream_pools, num_upstreams;
+
+    /** TODO: Add logic to check if the upstream is currently in use, and if so continue until an upstream that is not in use is found. */
+
+    /* Get the upstream pool currently pointed to */
+    upstream_pool_index = connection_pool->pool_index;
+    num_upstream_pools = connection_pool->upstream_pools->nelts;
+    upstream_pool = &((httplite_upstream_pool_t *)(connection_pool->upstream_pools->elts))[upstream_pool_index % num_upstream_pools];
+
+    /* Get the next upstream in the pool */
+    upstream_index = upstream_pool->upstream_index;
+    num_upstreams = upstream_pool->upstreams->nelts;
+    upstream = &((httplite_upstream_t*)(upstream_pool->upstreams->elts))[upstream_index % num_upstreams];
+
+    ngx_atomic_fetch_add(&connection_pool->pool_index, 1);
+    ngx_atomic_fetch_add(&upstream_pool->upstream_index, 1);
+
+    return upstream;
 }

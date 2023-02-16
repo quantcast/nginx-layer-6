@@ -15,8 +15,9 @@ typedef struct httplite_upstream_s {
     int         free;
 } httplite_upstream_t;
 
-httplite_upstream_t* httplite_create_upstream(httplite_upstream_configuration_t *uscf, char *address, ngx_int_t port);
+httplite_upstream_t* httplite_create_upstream(ngx_array_t *arr, char *address, ngx_int_t port, ngx_pool_t *pool);
 ngx_int_t httplite_free_upstream(httplite_upstream_t* upstream);
 void httplite_refresh_upstream_connection(httplite_upstream_t *upstream);
+httplite_upstream_t* fetch_upstream(httplite_connection_pool_t *connection_pool);
 
 #endif
