@@ -160,7 +160,7 @@ void httplite_request_handler(ngx_event_t *rev) {
     /* read entire connection into list*/
     while (rev->ready) {
         m = 0;
-        if (!httplite_add_slab(list)) {
+        if (!httplite_add_slab(&list)) {
             ngx_log_error(NGX_LOG_ALERT, c->log, 0, "unable to add slab.");
             return;
         }
@@ -210,7 +210,9 @@ void httplite_request_handler(ngx_event_t *rev) {
     //     split_request(&list);
     // }
     
-        printRequests(&list);
+    printf("%s\n", (char*) list.head->buffer);
+    fflush(stdout);
+    //printRequests(&list);
     
     // ----------------------
 
@@ -322,47 +324,44 @@ httplite_request_list_t *split_request (httplite_request_list_t *list) {
     httplite_request_list_t write_list;
     size_t l, header_size; 
     ssize_t body_size;
-    size_t body_flag;   /* = 1 if there is a body in the current request, 0 otherwise */
-    size_t overflow_flag; /* = 1 if we need to read onto the next slab for the same request, 0 otherwise */
 
     read_slab = list->head;
+    curr = read_slab->buffer;
     write_list = httplite_init_list(list->connection);
-    body_size = 0;
     header_size = 0;
-    overflow_flag = 0;
 
-    while (read_slab != NULL) {
-        str = read_slab->buffer;
+    while (true) { /* each iteration will find one request */
+        start_ptr = curr;
+        body_size = 0;
 
-        if (overflow_flag == 0) {
-            start_ptr = str;
-            body_size = 0;
+        curr = ngx_strlcasestrn(str, str + read_slab->size, (u_char*) LENGTH_HEADER, LENGTH_HEADER_SIZE - 1);
 
-            curr = ngx_strlcasestrn(str, str + read_slab->size, (u_char*) LENGTH_HEADER, LENGTH_HEADER_SIZE - 1);
+        if (curr != NULL) {
+            curr += LENGTH_HEADER_SIZE;
+            l = 0;
 
-            if (curr != NULL) {
-                curr += LENGTH_HEADER_SIZE;
-                l = 0;
-
-                /* find size of substring containing value after the header */
-                while (*(curr + l) != '\r' && *(curr + l) != '\n') {
-                    ++l;
-                }
-
-                body_size = ngx_atosz(curr, l);
-
-                curr += l;
+            /* find size of substring containing value after the header */
+            while (*(curr + l) != '\r' && *(curr + l) != '\n') {
+                ++l;
             }
-        } else {
-            
+
+            body_size = ngx_atosz(curr, l);
+
+            curr += l;
         }
 
         /* find index of header separator */ 
         curr = (u_char*) ngx_strstr(curr, HEADER_BODY_SEPARATOR);
 
-        if (curr == NULL) {
-            overflow_flag = 1;
-            end_ptr = str + SLAB_SIZE; /* end of slab */
+        if (curr == NULL) { /* headers continute onto next slab */
+
+            /* we need to copy what we currently have before moving to the next slab */
+            httplite_request_slab_t *slab = write_list.tail;
+
+            /* size of current = start of slab + size of slab - end of slab*/
+            size_t size = read_slab->buffer + read_slab->size - curr;
+
+            memcpy(slab->buffer + slab->size, start_ptr, size);
         }
         else {
             curr += HEADER_BODY_SEPARATOR_SIZE;
@@ -373,5 +372,9 @@ httplite_request_list_t *split_request (httplite_request_list_t *list) {
         }
 
         read_slab = read_slab->next;
+    }
+
+    while (true) {
+
     }
 }
