@@ -318,25 +318,33 @@ size_t check_http_method(u_char *str) {
 
 /* given a list of slabs, break it up into a list of lists, each one containing
 a single request */
-httplite_request_list_t *split_request (httplite_request_list_t *list) {
-    u_char* curr, str, start_ptr, end_ptr;
-    httplite_request_slab_t* read_slab, write_slab;
+httplite_request_list_t *split_request (httplite_request_list_t *read_list) {
+    u_char *curr, *start_ptr;
+    httplite_request_slab_t *read_slab;
     httplite_request_list_t write_list;
     size_t l, header_size; 
     ssize_t body_size;
 
-    read_slab = list->head;
+    read_slab = read_list->head;
     curr = read_slab->buffer;
-    write_list = httplite_init_list(list->connection);
+    write_list = httplite_init_list(read_list->connection);
     header_size = 0;
 
     while (true) { /* each iteration will find one request */
+
+        /* start_ptr will point to the first location we HAVE NOT copied yet 
+        *  each time we call copy, we advance start_ptr by that much 
+        *  curr will be the location in the read_slab we are currently looking at
+        *  usually we copy in chunks, each chunk starting at start_ptr and ending at curr
+        */
+
         start_ptr = curr;
         body_size = 0;
 
-        curr = ngx_strlcasestrn(str, str + read_slab->size, (u_char*) LENGTH_HEADER, LENGTH_HEADER_SIZE - 1);
+        /* find "Content Length" header */
+        curr = ngx_strlcasestrn(start_ptr, start_ptr + read_slab->size, (u_char*) LENGTH_HEADER, LENGTH_HEADER_SIZE - 1);
 
-        if (curr != NULL) {
+        if (curr != NULL) { /* get content length value */
             curr += LENGTH_HEADER_SIZE;
             l = 0;
 
@@ -350,31 +358,73 @@ httplite_request_list_t *split_request (httplite_request_list_t *list) {
             curr += l;
         }
 
-        /* find index of header separator */ 
+        /* find header-body separator */ 
         curr = (u_char*) ngx_strstr(curr, HEADER_BODY_SEPARATOR);
 
-        if (curr == NULL) { /* headers continute onto next slab */
+        if (curr == NULL) { 
+            /* in this case, headers continue onto next slab.
+            * we need to copy what we currently have before moving to the next slab */
+            copy_to_list(write_list, start_ptr, start_ptr - curr);
+            start_ptr = curr;
 
-            /* we need to copy what we currently have before moving to the next slab */
-            httplite_request_slab_t *slab = write_list.tail;
+            /* move to next slab */
+            read_slab = read_slab->next;
+            start_ptr = read_slab->buffer;
 
-            /* size of current = start of slab + size of slab - end of slab*/
-            size_t size = read_slab->buffer + read_slab->size - curr;
+            /* for now assuming that the end of the headers is on the next slab */
+            curr = (u_char*) ngx_strstr(start_ptr, HEADER_BODY_SEPARATOR); 
+            curr += HEADER_BODY_SEPARATOR_SIZE;
 
-            memcpy(slab->buffer + slab->size, start_ptr, size);
+            /* copy up to header-body separator */
+            copy_to_list(write_list, start_ptr, curr - start_ptr);
+            start_ptr = curr;
+
+            /* the body might be long enough it goes across multiple slabs.
+            * in that case we keep copying slab by slab until we get through the whole body */
+            while (body_size > 0) {
+                size_t available_space = SLAB_SIZE - write_list.tail->size;
+                if (body_size <= available_space) { /* if body fits in one slab */
+                    copy_to_list(write_list, start_ptr, body_size);
+                    start_ptr = curr;
+                    curr += body_size;
+                    body_size = 0;
+                } else {
+                    copy_to_list(write_list, start_ptr, available_space);
+                    body_size -= available_space;
+                    read_slab = read_slab->next;
+                    curr = read_slab->buffer;
+                    start_ptr = curr;
+                }
+            }
+
+            /* at this point I think the request should be fully copied
+            * TODO: set up for next request -- reset start_ptr, curr, etc.? */
         }
         else {
-            curr += HEADER_BODY_SEPARATOR_SIZE;
-            header_size = curr - str;
-            
-            curr += body_size + 1;
-            end_ptr = curr;
-        }
+            /* headers are on the same slab */
 
-        read_slab = read_slab->next;
+            // TODO: finish this
+        }
+    }
+}
+
+void copy_to_list(httplite_request_list_t list, u_char* src, size_t size) {
+    httplite_request_slab_t *slab = list.tail;
+    size_t available_space = SLAB_SIZE - slab->size;
+
+    if (available_space >= size) {
+        memcpy(src, slab->buffer + slab->size, size);
+        slab->size += size;
+    } else {
+        memcpy(src, slab->buffer + slab->size, available_space); /* copy what fits */
+        slab->size += available_space;
+        httplite_add_slab(&list);
+        slab = list.tail;
+        memcpy(src + available_space, slab->buffer, size - available_space); /* copy the rest */
+        slab->size += size - available_space;
     }
 
-    while (true) {
-
+    if (slab->size == SLAB_SIZE) {
+        httplite_add_slab(&list);
     }
 }

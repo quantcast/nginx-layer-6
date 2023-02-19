@@ -38,6 +38,13 @@ typedef struct httplite_connection_s {
 httplite_request_list_t httplite_init_list(ngx_connection_t *connection);
 
 /**
+ * copies size bytes starting from src to list
+ * adds slabs if necessary
+*/
+void copy_to_list(httplite_request_list_t list, u_char* src, size_t size);
+
+
+/**
  * Adds a node to the given list given the httplite_request_list
  * 
  * @returns A pointer to the new slab in the list
