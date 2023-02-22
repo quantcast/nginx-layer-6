@@ -283,6 +283,7 @@ ssize_t find_request_length(httplite_request_slab_t *slab) {
         header_size = curr - str;
         
         curr += body_size + 1;
+        
         // TODO: what if end of body is in the next slab? move this to recv wrapper
 
         if (check_http_method(curr) == 1) {
@@ -328,7 +329,6 @@ httplite_request_list_t *split_request (httplite_request_list_t *read_list) {
     read_slab = read_list->head;
     curr = read_slab->buffer;
     write_list = httplite_init_list(read_list->connection);
-    header_size = 0;
 
     while (true) { /* each iteration will find one request */
 
@@ -339,6 +339,7 @@ httplite_request_list_t *split_request (httplite_request_list_t *read_list) {
         */
 
         start_ptr = curr;
+        header_size = 0;
         body_size = 0;
 
         /* find "Content Length" header */
@@ -374,37 +375,35 @@ httplite_request_list_t *split_request (httplite_request_list_t *read_list) {
             /* for now assuming that the end of the headers is on the next slab */
             curr = (u_char*) ngx_strstr(start_ptr, HEADER_BODY_SEPARATOR); 
             curr += HEADER_BODY_SEPARATOR_SIZE;
+        }
+        
+        /* copy up to header-body separator */
+        copy_to_list(write_list, start_ptr, curr - start_ptr);
+        start_ptr = curr;
 
-            /* copy up to header-body separator */
-            copy_to_list(write_list, start_ptr, curr - start_ptr);
-            start_ptr = curr;
-
-            /* the body might be long enough it goes across multiple slabs.
-            * in that case we keep copying slab by slab until we get through the whole body */
-            while (body_size > 0) {
-                size_t available_space = SLAB_SIZE - write_list.tail->size;
-                if (body_size <= available_space) { /* if body fits in one slab */
-                    copy_to_list(write_list, start_ptr, body_size);
-                    start_ptr = curr;
-                    curr += body_size;
-                    body_size = 0;
-                } else {
-                    copy_to_list(write_list, start_ptr, available_space);
-                    body_size -= available_space;
-                    read_slab = read_slab->next;
-                    curr = read_slab->buffer;
-                    start_ptr = curr;
-                }
+        /* the body might be long enough it goes across multiple slabs.
+        * in that case we keep copying slab by slab until we get through the whole body */
+        while (body_size > 0) {
+            size_t available_space = SLAB_SIZE - write_list.tail->size;
+            if (body_size <= available_space) { /* if body fits in one slab */
+                copy_to_list(write_list, start_ptr, body_size);
+                start_ptr = curr;
+                curr += body_size;
+                body_size = 0;
+            } else {
+                copy_to_list(write_list, start_ptr, available_space);
+                body_size -= available_space;
+                read_slab = read_slab->next;
+                curr = read_slab->buffer;
+                start_ptr = curr;
             }
-
-            /* at this point I think the request should be fully copied
-            * TODO: set up for next request -- reset start_ptr, curr, etc.? */
         }
-        else {
-            /* headers are on the same slab */
-
-            // TODO: finish this
-        }
+        /* at this point I think the request should be fully copied
+        * TODO: set up for next request -- reset start_ptr, curr, etc.? */
+        // curr should be at the end of previous request
+        curr += 1;
+        read_slab = read_slab->next;
+        // start_ptr, header_size, and body_size reset for each iteration 
     }
 }
 
