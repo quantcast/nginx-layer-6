@@ -427,3 +427,29 @@ void copy_to_list(httplite_request_list_t list, u_char* src, size_t size) {
         httplite_add_slab(&list);
     }
 }
+
+*Helper methods to print out requests in the queue*/
+
+void printRequests (httplite_request_list_t *requests) {
+    httplite_request_list_t *curr = requests;
+    size_t i = 1;
+    while(curr != NULL){
+        printf("%s","Starting to print request ");
+        printf("%zu\n\n", i);
+        // printRequest(curr);
+        printf("%s", "Done with the request.");
+        printf("%zu\n\n", i);
+        i++;
+        curr = curr->next;
+    }
+
+}
+
+void printRequest(httplite_request_list_t *request) {
+    httplite_request_slab_t *curr = request->head;
+     
+    while(curr != NULL) {
+        printf("%s\n\n", curr->buffer);
+        curr = curr->next;
+    }
+}
