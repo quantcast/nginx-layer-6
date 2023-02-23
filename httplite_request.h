@@ -41,7 +41,7 @@ httplite_request_list_t httplite_init_list(ngx_connection_t *connection);
  * copies size bytes starting from src to list
  * adds slabs if necessary
 */
-void copy_to_list(httplite_request_list_t list, u_char* src, size_t size);
+void copy_to_list(httplite_request_list_t *list, u_char* src, size_t size);
 
 
 /**
@@ -74,6 +74,7 @@ size_t recv_wrapper(ngx_connection_t *c, httplite_request_slab_t *request, ngx_e
  * @returns 1 if str is an HTTP method, 0 if str is not an HTTP method
 */
 size_t check_http_method(u_char *str);
+httplite_request_list_t *split_request (httplite_request_list_t *read_list, httplite_request_list_t *write_list);
 
 void printRequests (httplite_request_list_t *requests);
 void printRequest(httplite_request_list_t *request);
