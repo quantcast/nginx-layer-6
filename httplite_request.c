@@ -184,31 +184,31 @@ void httplite_request_handler(ngx_event_t *rev) {
     
     // ------------------------
     httplite_request_list_t write_list = httplite_init_list(list.connection);
-    if (n < SLAB_SIZE) {
-        split_request(&list, &write_list);
-    } else {
-        // there might be a possibility that n > slab_size: we will test that
-        while (n == SLAB_SIZE) {
-            // add a new slab and read in that new slab
-            // TODO Make the method take a pointer to the existing list
+    // if (n < SLAB_SIZE) {
+    //     split_request(&list, &write_list);
+    // } else {
+    //     // there might be a possibility that n > slab_size: we will test that
+    //     while (n == SLAB_SIZE) {
+    //         // add a new slab and read in that new slab
+    //         // TODO Make the method take a pointer to the existing list
 
-            httplite_request_slab_t *new_slab = httplite_add_slab(&list);
-            if (!new_slab) {
-                ngx_log_error(NGX_LOG_ALERT, c->log, 0, "unable to add slab.");
-                return;
-            }
-            curr = curr->next; // point to the next slab before reading
-            n = recv_wrapper(c,curr, rev); 
+    //         httplite_request_slab_t *new_slab = httplite_add_slab(&list);
+    //         if (!new_slab) {
+    //             ngx_log_error(NGX_LOG_ALERT, c->log, 0, "unable to add slab.");
+    //             return;
+    //         }
+    //         curr = curr->next; // point to the next slab before reading
+    //         n = recv_wrapper(c,curr, rev); 
 
-            if (n < 0) { 
-                ngx_log_error(NGX_LOG_ALERT, c->log, 0, "failed recv.");
-                return; 
-            }
-        }
-        // split_request should be a void method
-        split_request(&list, &write_list);
-    }
-    
+    //         if (n < 0) { 
+    //             ngx_log_error(NGX_LOG_ALERT, c->log, 0, "failed recv.");
+    //             return; 
+    //         }
+    //     }
+    //     // split_request should be a void method
+    //     split_request(&list, &write_list);
+    // }
+    split_request(&list, &write_list);
     printRequests(&write_list); 
     // ----------------------
 
@@ -325,8 +325,11 @@ httplite_request_list_t *split_request (httplite_request_list_t *read_list, http
     curr = read_slab->buffer;
 
     while (true) { /* each iteration will find one request */
-        if(read_slab == NULL) {
-            break;
+        if(curr == read_slab->buffer + read_slab->size) {
+            if (read_slab->next == NULL){
+                break;
+            }
+            read_slab = read_slab->next;
         }
         // reseting these variables every time the loop runs
         //header_size = 0;
@@ -342,8 +345,11 @@ httplite_request_list_t *split_request (httplite_request_list_t *read_list, http
 
         /* find "Content Length" header */
         curr = ngx_strlcasestrn(start_ptr, start_ptr + read_slab->size, (u_char*) LENGTH_HEADER, LENGTH_HEADER_SIZE - 1);
+        // TODO: check next slab for content length
+        // TODO: check if content length header is cut off by slab, e.g. "Content le"
 
-        if (curr != NULL) { /* get content length value */
+        /* get content length value */
+        if (curr != NULL) { 
             curr += LENGTH_HEADER_SIZE;
             l = 0;
 
@@ -363,9 +369,8 @@ httplite_request_list_t *split_request (httplite_request_list_t *read_list, http
         if (curr == NULL) { 
             /* in this case, headers continue onto next slab.
             * we need to copy what we currently have before moving to the next slab */
-            copy_to_list(write_list, start_ptr, start_ptr - curr);
-            start_ptr = curr;
-
+            //copy_to_list(write_list, start_ptr, read_slab->buffer + SLAB_SIZE - start_ptr);
+            copy_to_list(write_list, read_slab->buffer + SLAB_SIZE - start_ptr, &read_slab, &start_ptr);
             /* move to next slab */
             read_slab = read_slab->next;
             start_ptr = read_slab->buffer;
@@ -376,57 +381,86 @@ httplite_request_list_t *split_request (httplite_request_list_t *read_list, http
         }
         
         /* copy up to header-body separator */
-        copy_to_list(write_list, start_ptr, curr - start_ptr);
-        start_ptr = curr;
 
-        /* the body might be long enough it goes across multiple slabs.
-        * in that case we keep copying slab by slab until we get through the whole body */
-        while (body_size > 0) {
-            ssize_t available_space = SLAB_SIZE - write_list->tail->size;
-            if (body_size <= available_space) { /* if body fits in one slab */
-                copy_to_list(write_list, start_ptr, body_size);
-                start_ptr = curr;
-                curr += body_size;
-                body_size = 0;
-            } else {
-                copy_to_list(write_list, start_ptr, available_space);
-                body_size -= available_space;
-                read_slab = read_slab->next;
-                curr = read_slab->buffer;
-                start_ptr = curr;
-            }
-        }
+        copy_to_list(write_list, curr - start_ptr + body_size, &read_slab, &start_ptr);
+        curr = start_ptr;
+
+        // /* the body might be long enough it goes across multiple slabs.
+        // * in that case we keep copying slab by slab until we get through the whole body */
+        // while (body_size > 0) {
+        //     ssize_t available_space = SLAB_SIZE - write_list->tail->size;
+        //     if (body_size <= available_space) { /* if body fits in one slab */
+        //         copy_to_list(write_list, start_ptr, body_size);
+        //         start_ptr = curr;
+        //         curr += body_size;
+        //         body_size = 0;
+        //     } else {
+        //         copy_to_list(write_list, start_ptr, available_space);
+        //         body_size -= available_space;
+        //         read_slab = read_slab->next;
+        //         curr = read_slab->buffer;
+        //         start_ptr = curr;
+        //     }
+        // }
         /* at this point I think the request should be fully copied
         * TODO: set up for next request -- reset start_ptr, curr, etc.? */
         // curr should be at the end of previous request
-        curr += 1; // why move the current
-        read_slab = read_slab->next;
+        //read_slab = read_slab->next;
         // start_ptr, header_size, and body_size reset for each iteration on the start of the while loop
     }
     return write_list;
 }
 
-void copy_to_list(httplite_request_list_t *list, u_char* src, size_t size) {
-    httplite_request_slab_t *slab = list->tail;
-    size_t available_space = SLAB_SIZE - slab->size;
+// void copy_to_list0(httplite_request_list_t *write_list, u_char* src, size_t size, 
+//     httplite_request_slab_t **end_read_slab, u_char **end_buf_ptr) {
+//     httplite_request_slab_t *write_slab = write_list->tail;
+//     size_t available_write_space = SLAB_SIZE - write_slab->size;
 
-    if (available_space >= size) {
-        memcpy(src, slab->buffer + slab->size, size);
-        slab->size += size;
-    } else {
-        memcpy(src, slab->buffer + slab->size, available_space); /* copy what fits */
-        slab->size += available_space;
-        httplite_add_slab(list);
-        slab = list->tail;
-        memcpy(src + available_space, slab->buffer, size - available_space); /* copy the rest */
-        slab->size += size - available_space;
+//     if (available_write_space >= size) {
+//         memcpy(src, write_slab->buffer + write_slab->size, size);
+//         slab->size += size;
+//     } else {
+//         memcpy(src, slab->buffer + slab->size, available_space); /* copy what fits */
+//         slab->size += available_space;
+//         httplite_add_slab(list);
+//         slab = list->tail;
+//         memcpy(src + available_space, slab->buffer, size - available_space); /* copy the rest */
+//         slab->size += size - available_space;
+//     }
+
+//     /*TODO: this is unnecessary since add_slab in the else case will handle it*/
+//     // if (slab->size == SLAB_SIZE) {
+//     //     httplite_add_slab(list);
+//     // }
+// }
+
+void copy_to_list(httplite_request_list_t *write_list, size_t size, httplite_request_slab_t **read_slab, u_char **read_start_ptr) {
+        if (size == 0) {
+            return;
+        }
+        size_t read_space = (*read_slab)->buffer + SLAB_SIZE - *read_start_ptr;
+        httplite_request_slab_t *write_slab = write_list->tail;
+        size_t write_space = SLAB_SIZE - write_slab->size;
+        if (read_space == 0) {
+            *read_slab = (*read_slab)->next; 
+            *read_start_ptr = (*read_slab)->buffer;
+        }
+        if (write_space == 0) {
+            httplite_add_slab(write_list);
+            write_slab = write_list->tail;
+        }
+
+        size_t min_space;
+        if (read_space <= write_space) {
+            min_space = read_space;
+        } else {
+            min_space = write_space;
+        }
+
+        memcpy(write_slab->buffer + write_slab->size, *read_start_ptr, min_space);
+        *read_start_ptr += min_space;
+        copy_to_list(write_list, size-min_space, read_slab, read_start_ptr);
     }
-
-    /*TODO: this is unnecessary since add_slab in the else case will handle it*/
-    // if (slab->size == SLAB_SIZE) {
-    //     httplite_add_slab(list);
-    // }
-}
 
 /*Helper methods to print out requests in the queue*/
 
@@ -439,6 +473,7 @@ void printRequests (httplite_request_list_t *requests) {
         printRequest(curr);
         printf("%s", "Done with the request ");
         printf("%zu\n\n", i);
+        fflush(stdout);
         i++;
         curr = curr->next;
     }
@@ -450,6 +485,7 @@ void printRequest(httplite_request_list_t *request) {
      
     while(curr != NULL) {
         printf("%s\n\n", curr->buffer);
+        fflush(stdout);
         curr = curr->next;
     }
 }

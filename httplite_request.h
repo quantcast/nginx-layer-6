@@ -41,7 +41,7 @@ httplite_request_list_t httplite_init_list(ngx_connection_t *connection);
  * copies size bytes starting from src to list
  * adds slabs if necessary
 */
-void copy_to_list(httplite_request_list_t *list, u_char* src, size_t size);
+void copy_to_list(httplite_request_list_t *write_list, size_t size, httplite_request_slab_t **read_slab, u_char **read_start_ptr);
 
 
 /**
