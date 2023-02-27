@@ -231,6 +231,9 @@ httplite_request_list_t *split_request (httplite_request_list_t *read_list, http
 
         /* make a new list to hold the next request, except on the first iteration */
         if (!first_iter) {
+            /* we think this init_list call is causing a bug
+            * it seems like the bug occurs when init_list(c) is called after c->recv has been called 
+            * when init_list is called before the recv call, there is no bug */
             temp = httplite_init_list(write_list->connection);
             write_list->next = &temp;
             write_list = &temp;
