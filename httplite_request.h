@@ -38,8 +38,11 @@ typedef struct httplite_connection_s {
 httplite_request_list_t httplite_init_list(ngx_connection_t *connection);
 
 /**
- * copies size bytes starting from src to list
- * adds slabs if necessary
+ * recursively copies "size" bytes starting from read_start_ptr (within read_slab's buffer) into write_list
+ * adds slabs to write_list if necessary
+ * advances read_slab and read_start_ptr as needed to get all "size" bytes
+ * when done, read_slab and read_start_ptr will point to end of copied region
+ * (read_start_ptr points to within read_slab's buffer)
 */
 void copy_to_list(httplite_request_list_t *write_list, size_t size, httplite_request_slab_t **read_slab, u_char **read_start_ptr);
 
