@@ -53,7 +53,7 @@ httplite_request_slab_t *httplite_add_slab(httplite_request_list_t *list) {
         return NULL;
     }
     // add a slab before the tail
-    list->head->next= new_slab;
+    list->tail->next= new_slab;
     list->tail = new_slab;
 
     return new_slab;
@@ -203,14 +203,14 @@ httplite_request_list_t *split_request (httplite_request_list_t *read_list, http
     httplite_request_slab_t *read_slab;
     size_t l, first_iter;
     ssize_t body_size;
-    httplite_request_list_t *head, temp;
+    httplite_request_list_t *head;
     head = write_list; /* keeps track of the head of the list of lists to return at the end */
 
     read_slab = read_list->head;
     curr = read_slab->buffer;
     first_iter = 1;
 
-    while (true) { /* each iteration will find one request */
+    for (;;) { /* each iteration will find one request */
         printf("\nrunning iteration\n");
         printf("read slab size = %zu\n", read_slab->size);
         printf("curr = %zu\n", (size_t) curr);
@@ -234,9 +234,10 @@ httplite_request_list_t *split_request (httplite_request_list_t *read_list, http
             /* we think this init_list call is causing a bug
             * it seems like the bug occurs when init_list(c) is called after c->recv has been called 
             * when init_list is called before the recv call, there is no bug */
-            temp = httplite_init_list(write_list->connection);
+            httplite_request_list_t temp = httplite_init_list(write_list->connection);
             write_list->next = &temp;
             write_list = &temp;
+            write_list->next = NULL;
         }
         first_iter = 0;
 
@@ -251,12 +252,14 @@ httplite_request_list_t *split_request (httplite_request_list_t *read_list, http
         start_ptr = curr;
 
         /* find "Content Length" header */
-        curr = ngx_strlcasestrn(start_ptr, start_ptr + read_slab->size, (u_char*) LENGTH_HEADER, LENGTH_HEADER_SIZE - 1);
+        u_char* header_loc = ngx_strlcasestrn(start_ptr, start_ptr + read_slab->size, (u_char*) LENGTH_HEADER, LENGTH_HEADER_SIZE - 1);
         // TODO: check next slab for content length
         // TODO: check if content length header is cut off by slab, e.g. "Content le"
 
+
         /* get content length value */
-        if (curr != NULL) { 
+        if (header_loc != NULL) { 
+            curr = header_loc;
             curr += LENGTH_HEADER_SIZE;
             l = 0;
 
@@ -268,7 +271,8 @@ httplite_request_list_t *split_request (httplite_request_list_t *read_list, http
             body_size = ngx_atosz(curr, l);
 
             curr += l;
-        }
+        } 
+        // TODO: if POST request and content length not found, throw a 411 and close connection
         printf("content length = %zu\n", body_size);
         fflush(stdout);
 
@@ -295,6 +299,8 @@ httplite_request_list_t *split_request (httplite_request_list_t *read_list, http
         *  curr - start_ptr + body_size = size of entire request
         */
         copy_to_list(write_list, curr - start_ptr + body_size, &read_slab, &start_ptr);
+        // the above function call might not be updating start_ptr correctly
+        // TODO: verify with gdb
         printf("copied successfully\n");
         fflush(stdout);
         curr = start_ptr + 1;

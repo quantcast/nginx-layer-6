@@ -28,7 +28,7 @@ ngx_int_t httplite_http_server_init_listening(ngx_conf_t *cf, ngx_int_t port)
     ngx_memzero(socket_address, socket_length);
     socket_address->sin_family = AF_INET;
     socket_address->sin_port = htons(port);
-    socket_address->sin_len = socket_length;
+    //socket_address->sin_len = socket_length;
     socket_address->sin_addr.s_addr = INADDR_ANY;
     
     ls = ngx_create_listening(cf, (struct sockaddr*)socket_address, socket_length);
