@@ -6,7 +6,7 @@
 #include "httplite_upstream.h"
 #include "httplite_upstream_module_configuration.h"
 
-static void httplite_empty_upstream_handler() { }
+static void httplite_empty_upstream_handler() {}
 
 httplite_upstream_t *httplite_create_upstream(ngx_array_t *arr, char *address, ngx_int_t port, ngx_pool_t *pool) {
     httplite_upstream_t *upstream;
@@ -37,16 +37,16 @@ httplite_upstream_t *httplite_create_upstream(ngx_array_t *arr, char *address, n
     inet_pton(AF_INET, address, &socket_address->sin_addr);
 
     name = ngx_pcalloc(pool, sizeof(ngx_str_t));
-    name->data = ngx_pnalloc(pool, 7);
-    name->data = (u_char *)"server";
-    name->len = 6;
+    name->data = ngx_pnalloc(pool, INET_ADDRSTRLEN);
+    name->data = address;
+    name->len = strlen(address) - 1;
 
     upstream->pool = pool;
     upstream->peer.sockaddr = (struct sockaddr*)socket_address;
     upstream->peer.socklen = socket_length;
     upstream->peer.name = name;
     upstream->peer.get = ngx_event_get_peer;
-    upstream->peer.log = NULL;
+    upstream->peer.log = pool->log;
     upstream->peer.log_error = NGX_ERROR_ERR;
 
     return upstream;
@@ -94,7 +94,7 @@ void httplite_send_request_to_upstream(httplite_upstream_t *upstream, httplite_r
     ngx_connection_t *connection = upstream->peer.connection;
 
     if (!connection) {
-        fprintf(stderr, "the connection is null!\n");
+        ngx_log_error(NGX_LOG_WARN, upstream->pool->log, 0, "unable to send request to upstream %s!\n", upstream->peer.name->data);
         // reinitialize the connection
         // add an event so that after reinitialization we resend to upstream
         return;
@@ -119,17 +119,14 @@ httplite_upstream_t* fetch_upstream(httplite_connection_pool_t *connection_pool)
     /** TODO: Add logic to check if the upstream is currently in use, and if so continue until an upstream that is not in use is found. */
 
     /* Get the upstream pool currently pointed to */
-    upstream_pool_index = connection_pool->pool_index;
+    upstream_pool_index = ngx_atomic_fetch_add(&connection_pool->pool_index, 1);
     num_upstream_pools = connection_pool->upstream_pools->nelts;
     upstream_pool = &((httplite_upstream_pool_t *)(connection_pool->upstream_pools->elts))[upstream_pool_index % num_upstream_pools];
 
     /* Get the next upstream in the pool */
-    upstream_index = upstream_pool->upstream_index;
+    upstream_index = ngx_atomic_fetch_add(&upstream_pool->upstream_index, 1);
     num_upstreams = upstream_pool->upstreams->nelts;
     upstream = &((httplite_upstream_t*)(upstream_pool->upstreams->elts))[upstream_index % num_upstreams];
-
-    ngx_atomic_fetch_add(&connection_pool->pool_index, 1);
-    ngx_atomic_fetch_add(&upstream_pool->upstream_index, 1);
 
     return upstream;
 }

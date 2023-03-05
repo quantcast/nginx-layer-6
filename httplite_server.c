@@ -14,7 +14,7 @@
 
 u_char* httplite_server_log_error(ngx_log_t *log, u_char *buf, size_t len)
 {
-    return NGX_OK;
+    return ngx_snprintf(buf, len, "while handling request");
 }
 
 void httplite_server_empty_handler(ngx_event_t *wev)
@@ -74,7 +74,6 @@ ngx_int_t httplite_server_init_listening(ngx_conf_t *cf, ngx_int_t port)
     
     socket_address->sin_family = AF_INET;
     socket_address->sin_port = htons(port);
-    socket_address->sin_len = socket_length;
     socket_address->sin_addr.s_addr = INADDR_ANY;
 
     ls = ngx_create_listening(cf, (struct sockaddr*)socket_address, socket_length);

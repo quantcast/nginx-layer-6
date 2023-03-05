@@ -76,13 +76,7 @@ void httplite_close_connection(ngx_connection_t *c)
     ngx_destroy_pool(pool);
 }
 
-void httplite_empty_read_handler() {
-    printf("we are ready to read from the upstream in the request handler!\n");
-}
-
-void httplite_empty_write_handler() {
-    printf("we are ready to write to the client!\n");
-}
+void httplite_empty_handler() {}
 
 void httplite_upstream_read_handler(ngx_event_t *event) {
     ngx_connection_t *connection = event->data;
@@ -120,7 +114,7 @@ void httplite_upstream_read_handler(ngx_event_t *event) {
     }
 
     client->send(client, response_slab->buffer, response_slab->size);
-    upstream->read->handler = httplite_empty_read_handler;
+    upstream->read->handler = httplite_empty_handler;
 }
 
 /* Assumes incoming slab is empty (writes to buffer pointer, overwriting anything there) */
@@ -226,7 +220,6 @@ void httplite_request_handler(ngx_event_t *rev) {
     }
 
     n = recv_wrapper(c, curr, rev);
-    printf("%s\n", curr->buffer);
 
     if (n <= 0) {
         ngx_log_error(NGX_LOG_ALERT, c->log, 0, "failed recv.");
