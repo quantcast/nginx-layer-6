@@ -1,0 +1,6 @@
+{
+  "name": "Debian",
+  "dockerFile": "Dockerfile",
+  "capAdd": ["SYS_PTRACE"],
+  "securityOpt": ["seccomp=unconfined"]
+}
