@@ -114,7 +114,6 @@ void httplite_upstream_read_handler(ngx_event_t *event) {
 
     // wait until client is write ready to send to client
     if (!client->write->ready) {
-        printf("client not ready to write yet\n");
         ngx_add_timer(event, DEFAULT_CLIENT_WRITE_TIMEOUT);
         return;
     }

@@ -8,20 +8,24 @@
 
 static void httplite_empty_upstream_handler() { }
 
-httplite_upstream_t *httplite_create_upstream(httplite_upstream_configuration_t *uscf, char *address, ngx_int_t port) {
+httplite_upstream_t *httplite_create_upstream(
+    httplite_upstream_configuration_t *upstream_configuration, 
+    char *address, 
+    ngx_int_t port
+) {
     httplite_upstream_t *upstream;
     struct sockaddr_in *socket_address;
     size_t socket_length;
     ngx_str_t *name;
     
-    upstream = ngx_array_push(&uscf->upstreams);
+    upstream = ngx_array_push(&upstream_configuration->upstreams);
 
     if (!upstream) {
         return NULL;
     }
 
     socket_length = sizeof(struct sockaddr_in);
-    socket_address = ngx_pcalloc(uscf->pool, socket_length);
+    socket_address = ngx_pcalloc(upstream_configuration->pool, socket_length);
 
     if (socket_address == NULL) {
         fprintf(stderr, "Failed to allocate socket address\n");
@@ -36,12 +40,12 @@ httplite_upstream_t *httplite_create_upstream(httplite_upstream_configuration_t 
 
     inet_pton(AF_INET, address, &socket_address->sin_addr);
 
-    name = ngx_pcalloc(uscf->pool, sizeof(ngx_str_t));
-    name->data = ngx_pnalloc(uscf->pool, 7);
+    name = ngx_pcalloc(upstream_configuration->pool, sizeof(ngx_str_t));
+    name->data = ngx_pnalloc(upstream_configuration->pool, 7);
     name->data = (u_char *)"server";
     name->len = 6;
 
-    upstream->pool = uscf->pool;
+    upstream->pool = upstream_configuration->pool;
     upstream->peer.sockaddr = (struct sockaddr*)socket_address;
     upstream->peer.socklen = socket_length;
     upstream->peer.name = name;

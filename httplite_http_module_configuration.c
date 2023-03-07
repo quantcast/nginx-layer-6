@@ -8,10 +8,10 @@
 #include "httplite_upstream_module_configuration.h"
 
 ngx_int_t httplite_http_block_initialization(ngx_conf_t *configuration) {
-    httplite_server_conf_t *cscf = httplite_conf_get_module_server_conf(configuration, httplite_http_module);
+    httplite_server_conf_t *server_configuration = httplite_conf_get_module_server_conf(configuration, httplite_http_module);
 
     // associating configuration with module
-    if (httplite_server_init_listening(configuration, cscf->port) != NGX_OK) {
+    if (httplite_server_init_listening(configuration, server_configuration->port) != NGX_OK) {
         fprintf(stderr, "Failed to init connection\n");
         return NGX_ERROR;
     }
@@ -32,44 +32,44 @@ void* httplite_http_block_create_main_configuration(ngx_conf_t* configuration) {
 }
 
 char *
-httplite_core_server(ngx_conf_t *cf, ngx_command_t *cmd, void *dummy)
+httplite_core_server(ngx_conf_t *configuration, ngx_command_t *command, void *dummy)
 {
-    char                        *rv;
-    ngx_conf_t                   pcf;
-    httplite_configuration_context_t         *ctx;
-    httplite_server_conf_t    *cscf;
+    char                        *parse_result;
+    ngx_conf_t                   previous_configuration;
+    httplite_configuration_context_t         *context;
+    httplite_server_conf_t    *server_configuration;
 
     /* the server configuration context */
 
-    ctx = cf->ctx;
-    cscf = ctx->server_configuration[httplite_http_module.ctx_index];
-    cscf->ctx = ctx;
+    context = configuration->ctx;
+    server_configuration = context->server_configuration[httplite_http_module.ctx_index];
+    server_configuration->ctx = context;
 
     /* parse inside server{} */
 
-    pcf = *cf;
-    cf->ctx = ctx;
-    cf->cmd_type = HTTPLITE_SERVER_CONFIGURATION;
+    previous_configuration = *configuration;
+    configuration->ctx = context;
+    configuration->cmd_type = HTTPLITE_SERVER_CONFIGURATION;
 
-    rv = ngx_conf_parse(cf, NULL);
+    parse_result = ngx_conf_parse(configuration, NULL);
 
-    *cf = pcf;
+    *configuration = previous_configuration;
 
-    return rv;
+    return parse_result;
 }
 
 void *
-httplite_core_create_server_configuration(ngx_conf_t *cf)
+httplite_core_create_server_configuration(ngx_conf_t *configuration)
 {
-    httplite_server_conf_t  *cscf;
+    httplite_server_conf_t  *server_configuration;
 
-    cscf = ngx_pcalloc(cf->pool, sizeof(httplite_server_conf_t));
-    if (cscf == NULL) {
+    server_configuration = ngx_pcalloc(configuration->pool, sizeof(httplite_server_conf_t));
+    if (server_configuration == NULL) {
         return NULL;
     }
 
-    cscf->port = NGX_CONF_UNSET;
-    cscf->server_name = (ngx_str_t)ngx_null_string;
+    server_configuration->port = NGX_CONF_UNSET;
+    server_configuration->server_name = (ngx_str_t)ngx_null_string;
 
-    return cscf;
+    return server_configuration;
 }
