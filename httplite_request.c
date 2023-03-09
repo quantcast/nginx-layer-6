@@ -96,6 +96,8 @@ size_t recv_wrapper(ngx_connection_t *c, httplite_request_slab_t *slab, ngx_even
     }
 
     if (n == NGX_ERROR) {
+        ngx_log_error(NGX_LOG_INFO, c->log, 0,
+                      "client closed connection");
         ngx_httplite_close_connection(c);
         return n;
     }
