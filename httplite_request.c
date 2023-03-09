@@ -276,7 +276,8 @@ httplite_request_list_t *split_request (httplite_request_list_t *read_list, http
         printf("content length = %zu\n", body_size);
         fflush(stdout);
 
-        /* find header-body separator */ 
+        /* find header-body separator 
+        *  will set curr to first char of the separator */ 
         curr = (u_char*) ngx_strstr(curr, HEADER_BODY_SEPARATOR);
 
         if (curr == NULL) { 
@@ -295,15 +296,17 @@ httplite_request_list_t *split_request (httplite_request_list_t *read_list, http
             curr += HEADER_BODY_SEPARATOR_SIZE;
         }
         
-        /* curr - start_ptr = size of headers + size of header_body_separator
-        *  curr - start_ptr + body_size = size of entire request
+        /* curr - start_ptr = size of headers
+        *  curr - start_ptr + HEADER_BODY_SEPARATOR_SIZE = size of headers + size of separator
+        *  curr - start_ptr + HEADER_BODY_SEPARATOR_SIZE + body_size = size of entire request
         */
-        copy_to_list(write_list, curr - start_ptr + body_size, &read_slab, &start_ptr);
+        size_t request_size = curr - start_ptr + HEADER_BODY_SEPARATOR_SIZE + body_size;
+        copy_to_list(write_list, request_size, &read_slab, &start_ptr);
         // the above function call might not be updating start_ptr correctly
         // TODO: verify with gdb
         printf("copied successfully\n");
         fflush(stdout);
-        curr = start_ptr + 1;
+        curr = start_ptr;
     }
     printf("\ndone splitting");
     fflush(stdout);
