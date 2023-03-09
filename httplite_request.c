@@ -324,61 +324,75 @@ httplite_request_list_t *split_request (httplite_request_list_t *read_list, http
 /* this is a recursive function
 *  see header file for documentation 
 */
-void copy_to_list(httplite_request_list_t *write_list, size_t size, 
+void copy_to_list(httplite_request_list_t *write_list, size_t read_size, 
                     httplite_request_slab_t **read_slab, u_char **read_start_ptr) {
 
     /* base case */
-    if (size == 0) { 
+    if (read_size == 0) { 
         return;
     }
 
     // printf("size = %zu\n", size);
     // fflush(stdout);
 
+    /*TODO: read_length might not be needed: for now it's a safe net
+     when it happens read_length > read_size*/
     /* read_length = how much we need to read from current slab */
-    size_t read_length = (*read_slab)->buffer + SLAB_SIZE - *read_start_ptr; 
+    size_t read_length = (*read_slab)->buffer + (*read_slab)->size - *read_start_ptr; 
+   
+    /* read_length should never be bigger than the size of the read_size,
+    which most of the time should be request_size */
+    if (read_length > read_size) { 
+        read_length = read_size;
+    }
     printf("read_space = %zu\n", read_length);
     fflush(stdout);
-   
-    /* read_length should never be bigger than the size of the request */
-    if (read_length > size) { 
-        read_length = size;
-    }
-
     httplite_request_slab_t *write_slab = write_list->tail;
-    
-    /* write_space = how much we can write on the current slab */
+
+    /* how much we can write on the current slab */
     size_t write_space = SLAB_SIZE - write_slab->size;
+    
+    printf("write_space = %zu\n", write_space);
+    fflush(stdout);
+   
+    /* we will copy up to MIN(read_length, write_space) */
+    size_t copy_bytes;
+    if (read_length <= write_space) {
+        copy_bytes = read_length;
+    } else {
+        copy_bytes = write_space;
+    }
+    printf("copy_bytes = %zu\n", copy_bytes);
+    fflush(stdout);
+
+    memcpy(write_slab->buffer + write_slab->size, *read_start_ptr, copy_bytes);
+
+    /*decrement read_size*/
+    read_size -= copy_bytes;
+    /* update the buffer size*/
+    write_slab->size += copy_bytes;
+    /* advance read pointer */
+    *read_start_ptr += copy_bytes;
+    
+    printf("written size = %zu\n", write_slab->size );
+    fflush(stdout);
      
-    /* if we have read the current slab, move to next slab */
-    if (read_length == 0) {
+    /* if we have read the current slab, and we still need to read more move to next slab */
+    if (read_length - copy_bytes == 0 && read_size != 0) {
         *read_slab = (*read_slab)->next; 
         *read_start_ptr = (*read_slab)->buffer;
     }
 
-    /* if we have filled up the current write slab, make a new one */
-    if (write_space == 0) {
+    /* if we have filled up the current write slab and still needs to write make a new one */
+    if (write_space-copy_bytes == 0 && read_length > 0) {
         httplite_add_slab(write_list);
         write_slab = write_list->tail;
     }
 
-    /* we will memcpy an amount equal to MIN(read_length, write_space) */
-    size_t min_space;
-    if (read_length <= write_space) {
-        min_space = read_length;
-    } else {
-        min_space = write_space;
-    }
-    printf("min_space = %zu\n", min_space);
-    fflush(stdout);
-
-    memcpy(write_slab->buffer + write_slab->size, *read_start_ptr, min_space);
-
-    /* advance read pointer */
-    *read_start_ptr += min_space;
-
     /* recursive call */
-    copy_to_list(write_list, size-min_space, read_slab, read_start_ptr);
+    printf("\nDoing a recursive call with remaining size_to_read of: \n");
+    printf("%zu\n", read_size);
+    copy_to_list(write_list, read_size, read_slab, read_start_ptr);
 }
 
 /*Helper methods to print out requests in the queue*/
