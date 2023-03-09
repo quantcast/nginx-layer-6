@@ -35,7 +35,7 @@ typedef struct httplite_connection_s {
  * @returns new httplite linked list of slabs, where each slab contains a
  * pointer to a SLAB_SIZE string buffer, using the given connection.
 */
-httplite_request_list_t httplite_init_list(ngx_connection_t *connection);
+httplite_request_list_t *httplite_init_list(ngx_connection_t *connection);
 
 /**
  * recursively copies "size" bytes starting from read_start_ptr (within read_slab's buffer) into write_list
