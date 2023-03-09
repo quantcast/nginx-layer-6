@@ -193,7 +193,17 @@ void httplite_request_handler(ngx_event_t *rev) {
     printRequests(read_list);
     write_list = split_request(read_list, write_list);
     printf("%s", "printing writelist from handler\n\n");
-    printRequests(write_list);   
+    printRequests(write_list);
+    /* free the read_list*/
+    // ngx_int_t out = ngx_pfree(read_list->connection->pool, read_list);
+    
+    // if (out == NGX_OK) {
+    //     printRequests(read_list);
+    // }
+    // if(out == NGX_DECLINED){
+    //     ngx_log_error(NGX_LOG_INFO, c->log, 0,
+    //                   "pool can't free the read_list");
+    // }   
 }
 
 /* given a list of slabs, break it up into a list of lists, 
@@ -403,6 +413,9 @@ void printRequests (httplite_request_list_t *requests) {
     printf("%s", "Printing requests' queque\n\n");
     httplite_request_list_t *curr = requests;
     size_t i = 1;
+    if(curr == NULL){
+        printf("%s","the list is null");
+    }
     while(curr != NULL){
         printf("%s","Starting to print request ");
         printf("%zu\n\n", i);
