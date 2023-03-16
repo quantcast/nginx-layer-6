@@ -118,6 +118,24 @@ size_t recv_wrapper(ngx_connection_t *c, httplite_request_slab_t *slab, ngx_even
     return n;
 }
 
+void httplite_free_slab (httplite_request_slab_t *slab) {
+    if (slab == NULL) {
+        return;
+    }
+    ngx_free(slab->buffer);
+    httplite_free_slab(slab->next);
+    ngx_free(slab);
+}
+
+void httplite_free_list (httplite_request_list_t *list) {
+    if(list == NULL){
+        return;
+    }
+    httplite_free_slab(list->head);
+    httplite_free_list(list->next);
+    ngx_free(list);
+}
+
 void httplite_request_handler(ngx_event_t *rev) {
     ssize_t                    n, m;
     httplite_request_slab_t   *curr;
@@ -194,16 +212,9 @@ void httplite_request_handler(ngx_event_t *rev) {
     write_list = split_request(read_list, write_list);
     printf("%s", "printing writelist from handler\n\n");
     printRequests(write_list);
+
     /* free the read_list*/
-    // ngx_int_t out = ngx_pfree(read_list->connection->pool, read_list);
-    
-    // if (out == NGX_OK) {
-    //     printRequests(read_list);
-    // }
-    // if(out == NGX_DECLINED){
-    //     ngx_log_error(NGX_LOG_INFO, c->log, 0,
-    //                   "pool can't free the read_list");
-    // }   
+    httplite_free_list(read_list);
 }
 
 /* given a list of slabs, break it up into a list of lists, 
@@ -414,7 +425,8 @@ void printRequests (httplite_request_list_t *requests) {
     httplite_request_list_t *curr = requests;
     size_t i = 1;
     if(curr == NULL){
-        printf("%s","the list is null");
+        printf("%s\n","the list is empty");
+        fflush(stdout);
     }
     while(curr != NULL){
         printf("%s","Starting to print request ");
@@ -430,11 +442,11 @@ void printRequests (httplite_request_list_t *requests) {
 }
 
 void printRequest(httplite_request_list_t *request) {
-    httplite_request_slab_t *curr = request->head;
-    // printf("%zu",curr->size); 
-    while(curr != NULL) {
-        printf("%s\n\n", curr->buffer);
-        fflush(stdout);
-        curr = curr->next;
+        httplite_request_slab_t *curr = request->head;
+        // printf("%zu",curr->size); 
+        while(curr != NULL) {
+            printf("%s\n\n", curr->buffer);
+            fflush(stdout);
+            curr = curr->next;
     }
 }

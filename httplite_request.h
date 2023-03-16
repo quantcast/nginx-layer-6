@@ -78,7 +78,19 @@ size_t recv_wrapper(ngx_connection_t *c, httplite_request_slab_t *request, ngx_e
 */
 size_t check_http_method(u_char *str);
 httplite_request_list_t *split_request (httplite_request_list_t *read_list, httplite_request_list_t *write_list);
+/**
+ * Used to free a list that is not needed anymore by using ngx_free() instead of ngx_pfree() which is used to
+ * free large allocations
+ * @cite: https://www.nginx.com/resources/wiki/extending/api/alloc/
+*/
+void httplite_free_list (httplite_request_list_t *list);
 
+/**
+ * Used to free a slab that is not needed anymore by using ngx_free() instead of ngx_pfree() which is used to
+ * free large allocations
+ * @cite: https://www.nginx.com/resources/wiki/extending/api/alloc/
+*/
+void httplite_free_slab (httplite_request_slab_t *slab);
 void printRequests (httplite_request_list_t *requests);
 void printRequest(httplite_request_list_t *request);
 
