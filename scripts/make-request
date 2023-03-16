@@ -32,6 +32,7 @@ while [[ $# -gt 0 ]]; do
             echo "    --host (-h) - The host address to hit with a request"
             echo "    --file (-f) - The test file to use as the body of the request"
             echo "    --data (-d) - The data to use as the body of the request (defaults to data if both -d and -f are provided)"
+            echo "NOTE: To make a GET request, do not provide a -f or -d argument"
             shift
             exit 0
             ;;
@@ -46,18 +47,22 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if [ -z $PORT ] || [ -z $HOST ] || ([ -z $TEST_FILE ] && [ -z $DATA ])
+if [ -z $PORT ] || [ -z $HOST ]
 then
-    echo "Illegal usage: must have all flags [-p] [-h] [-fd]"
+    echo "Illegal usage: must have flags [-p] [-h]"
     exit 1
 fi
 
 # detect whether to use $DATA or $TEST_FILE
-if [ ! -z $DATA ]
+if [ -z $DATA ] && [ -z $TEST_FILE ]
 then
-    echo "Calling curl on address $HOST:$PORT with given data"
+    echo "Calling curl on address $HOST:$PORT with no data (GET)"
+    curl "$HOST:$PORT"
+elif [ -z $TEST_FILE ]
+then
+    echo "Calling curl on address $HOST:$PORT with given data (POST)"
     curl "$HOST:$PORT" -d "$DATA"
 else
-    echo "Calling curl on address $HOST:$PORT with data from $TEST_FILE"
+    echo "Calling curl on address $HOST:$PORT with data from $TEST_FILE (POST)"
     curl "$HOST:$PORT" -d "$(cat $TEST_FILE)"
 fi
