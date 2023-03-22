@@ -52,7 +52,8 @@ httplite_request_slab_t *httplite_add_slab(httplite_request_list_t *list) {
         ngx_log_error(NGX_ERROR_ALERT,list->connection->log, 0, "unable to the string buffer on connection's memory pool.");
         return NULL;
     }
-    // add a slab before the tail
+
+    // add the slab to the tail of the list
     list->tail->next= new_slab;
     list->tail = new_slab;
 
@@ -102,13 +103,6 @@ size_t recv_wrapper(ngx_connection_t *c, httplite_request_slab_t *slab, ngx_even
         return n;
     }
 
-    // if (n == NGX_OK) {
-    //     ngx_log_error(NGX_LOG_INFO, c->log, 0,
-    //                   "client closed connection");
-    //     ngx_httplite_close_connection(c);
-    //     return n;
-    // }
-
     slab->size += n;
 
     c->log->action = "reading client request line";
@@ -116,24 +110,6 @@ size_t recv_wrapper(ngx_connection_t *c, httplite_request_slab_t *slab, ngx_even
     ngx_reusable_connection(c, 0);
 
     return n;
-}
-
-void httplite_free_slab (httplite_request_slab_t *slab) {
-    if (slab == NULL) {
-        return;
-    }
-    ngx_free(slab->buffer);
-    httplite_free_slab(slab->next);
-    ngx_free(slab);
-}
-
-void httplite_free_list (httplite_request_list_t *list) {
-    if(list == NULL){
-        return;
-    }
-    httplite_free_slab(list->head);
-    httplite_free_list(list->next);
-    ngx_free(list);
 }
 
 void httplite_request_handler(ngx_event_t *rev) {
@@ -207,22 +183,15 @@ void httplite_request_handler(ngx_event_t *rev) {
         ngx_log_error(NGX_LOG_ALERT, c->log, 0, "failed recv.");
         return;
     }
-    
-    printRequests(read_list);
-    write_list = split_request(read_list, write_list);
-    printf("%s", "printing writelist from handler\n\n");
-    printRequests(write_list);
 
-    /* free the read_list*/
-    httplite_free_list(read_list);
+    write_list = split_request(read_list, write_list);
+    printRequests(write_list);
 }
 
 /* given a list of slabs, break it up into a list of lists, 
 * each one containing a single request 
 */
 httplite_request_list_t *split_request (httplite_request_list_t *read_list, httplite_request_list_t *write_list) {
-    printf("%s", "Splitting request\n\n");
-    fflush(stdout);
     u_char *curr, *start_ptr;
     httplite_request_slab_t *read_slab;
     size_t l, first_iter;
@@ -234,35 +203,17 @@ httplite_request_list_t *split_request (httplite_request_list_t *read_list, http
     curr = read_slab->buffer;
     first_iter = 1;
 
-    while(1) { /* each iteration will find one request */
-        printf("\nrunning iteration ");
-        printf("%zu\n", first_iter);
-        fflush(stdout);
-        
-        // printRequests(head);
-        // if (curr == 1){
-        //     break;
-        // }
+    for(;;) { /* each iteration will find one request */
         if(curr >= read_slab->buffer + read_slab->size || read_slab == NULL) {
-            // printf("break cond 1\n");
-            // fflush(stdout);
             break;
             
         }
 
         /* make a new list to hold the next request, except on the first iteration */
         if (first_iter != 1) {
-            /* we think this init_list call is causing a bug
-            * it seems like the bug occurs when init_list(c) is called after c->recv has been called 
-            * when init_list is called before the recv call, there is no bug */
             httplite_request_list_t *temp = httplite_init_list(write_list->connection);
             write_list->next = temp;
             write_list = write_list->next;
-            // write_list->next = NULL;
-            // printf("\nCreatine a new list for iteration: ");
-            // printf("%zu\n\n",first_iter);
-            // printf("\n Of address: ");
-            // printf("%p\n\n", temp);
         }
         ++first_iter;
 
@@ -297,17 +248,13 @@ httplite_request_list_t *split_request (httplite_request_list_t *read_list, http
 
             curr += l;
         } 
-        // // TODO: if POST request and content length not found, throw a 411 and close connection
-        // printf("content length = %zu\n", body_size);
-        // fflush(stdout);
+        // TODO: if POST request and content length not found, throw a 411 and close connection
 
         /* find header-body separator 
         *  will set curr to first char of the separator */ 
         curr = (u_char*) ngx_strstr(curr, HEADER_BODY_SEPARATOR);
 
         if (curr == NULL) { 
-            // printf("separator was null\n");
-            // fflush(stdout);
             /* in this case, headers continue onto next slab.
             * we need to copy what we currently have before moving to the next slab */
             copy_to_list(write_list, read_slab->buffer + SLAB_SIZE - start_ptr, &read_slab, &start_ptr);
@@ -321,26 +268,18 @@ httplite_request_list_t *split_request (httplite_request_list_t *read_list, http
             curr += HEADER_BODY_SEPARATOR_SIZE;
         }
         
-        /* curr - start_ptr = size of headers
-        *  curr - start_ptr + HEADER_BODY_SEPARATOR_SIZE = size of headers + size of separator
-        *  curr - start_ptr + HEADER_BODY_SEPARATOR_SIZE + body_size = size of entire request
+        /**
+        * To get the total request size:
+        *  size of headers                      = curr - start_ptr
+        *  size of headers + size of separator  = curr - start_ptr + HEADER_BODY_SEPARATOR_SIZE
+        *  size of entire request               = curr - start_ptr + HEADER_BODY_SEPARATOR_SIZE + body_size
         */
         size_t request_size = curr - start_ptr + HEADER_BODY_SEPARATOR_SIZE + body_size;
-        // printf("read slab size = %zu\n", read_slab->size);
-        // printf("curr = %zu\n", (size_t) curr);
-        // printf("end of slab = %zu\n", (size_t) read_slab->buffer + read_slab->size);
-        // fflush(stdout);
+
         copy_to_list(write_list, request_size, &read_slab, &start_ptr);
-        // the above function call might not be updating start_ptr correctly
-        // TODO: verify with gdb
-        // printf("copied successfully\n");
-        // printRequests(head);
-        // fflush(stdout);
         curr = start_ptr;
     }
-    // printRequests(head);
-    printf("\ndone splitting\n");
-    fflush(stdout);
+
     return head;
 }
 
@@ -355,9 +294,6 @@ void copy_to_list(httplite_request_list_t *write_list, size_t read_size,
         return;
     }
 
-    // printf("size = %zu\n", size);
-    // fflush(stdout);
-
     /*TODO: read_length might not be needed: for now it's a safe net
      when it happens read_length > read_size*/
     /* read_length = how much we need to read from current slab */
@@ -368,15 +304,10 @@ void copy_to_list(httplite_request_list_t *write_list, size_t read_size,
     if (read_length > read_size) { 
         read_length = read_size;
     }
-    printf("read_space = %zu\n", read_length);
-    fflush(stdout);
     httplite_request_slab_t *write_slab = write_list->tail;
 
     /* how much we can write on the current slab */
     size_t write_space = SLAB_SIZE - write_slab->size;
-    
-    printf("write_space = %zu\n", write_space);
-    fflush(stdout);
    
     /* we will copy up to MIN(read_length, write_space) */
     size_t copy_bytes;
@@ -385,36 +316,29 @@ void copy_to_list(httplite_request_list_t *write_list, size_t read_size,
     } else {
         copy_bytes = write_space;
     }
-    printf("copy_bytes = %zu\n", copy_bytes);
-    fflush(stdout);
 
     memcpy(write_slab->buffer + write_slab->size, *read_start_ptr, copy_bytes);
 
-    /*decrement read_size*/
+    /*d ecrement read_size */
     read_size -= copy_bytes;
-    /* update the buffer size*/
+    /* update the buffer size */
     write_slab->size += copy_bytes;
     /* advance read pointer */
     *read_start_ptr += copy_bytes;
-    
-    printf("written size = %zu\n", write_slab->size );
-    fflush(stdout);
      
-    /* if we have read the current slab, and we still need to read more move to next slab */
+    /* if we have read the current slab and we still need to read more, move to next slab */
     if (read_length - copy_bytes == 0 && read_size != 0) {
         *read_slab = (*read_slab)->next; 
         *read_start_ptr = (*read_slab)->buffer;
     }
 
-    /* if we have filled up the current write slab and still needs to write make a new one */
+    /* if we have filled up the current write slab and still needs to write, make a new one */
     if (write_space-copy_bytes == 0 && read_length > 0) {
         httplite_add_slab(write_list);
         write_slab = write_list->tail;
     }
 
     /* recursive call */
-    printf("\nDoing a recursive call with remaining size_to_read of: \n");
-    printf("%zu\n", read_size);
     copy_to_list(write_list, read_size, read_slab, read_start_ptr);
 }
 
@@ -437,7 +361,7 @@ void printRequests (httplite_request_list_t *requests) {
         i++;
         curr = curr->next;
     }
-    printf("%s", "Done printing requests' queque\n\n");
+    printf("%s", "Done printing requests' queue\n\n");
     fflush(stdout);
 }
 

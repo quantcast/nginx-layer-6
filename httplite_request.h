@@ -16,7 +16,6 @@ typedef struct httplite_request_slab_s {
 typedef struct httplite_request_list_s {
     httplite_request_slab_t *head;
     httplite_request_slab_t *tail;
-    //httplite_connection_t *connection;           /* A pointer to the parent connection */
     ngx_connection_t *connection;
    struct httplite_request_list_s *next;                 /* Points to next request in pipeline queue */
 } httplite_request_list_t;
