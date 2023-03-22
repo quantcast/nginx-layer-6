@@ -4,12 +4,12 @@
 #include <ngx_event.h>
 
 #include "httplite_request.h"
+#include "httplite_upstream.h"
 
 #define LENGTH_HEADER "\nContent-Length: "
 #define LENGTH_HEADER_SIZE strlen(LENGTH_HEADER)
 #define HEADER_BODY_SEPARATOR "\r\n\r\n"
 #define HEADER_BODY_SEPARATOR_SIZE strlen(HEADER_BODY_SEPARATOR)
-
 
 httplite_request_list_t httplite_init_list(ngx_connection_t *connection) {
     httplite_request_list_t list = { 0 };
@@ -60,7 +60,7 @@ httplite_request_slab_t *httplite_add_slab(httplite_request_list_t list) {
     return new_slab;
 }
 
-void ngx_httplite_close_connection(ngx_connection_t *c)
+void httplite_close_connection(ngx_connection_t *c)
 {
     ngx_pool_t  *pool;
 
@@ -76,20 +76,93 @@ void ngx_httplite_close_connection(ngx_connection_t *c)
     ngx_destroy_pool(pool);
 }
 
+void httplite_empty_read_handler() {
+    printf("we are ready to read from the upstream in the request handler!\n");
+}
+
+void httplite_empty_write_handler() {
+    printf("we are ready to write to the client!\n");
+}
+
+void httplite_upstream_read_handler(ngx_event_t *event) {
+    ngx_connection_t *connection = event->data;
+    httplite_event_connection_t *connections = connection->data;
+    ngx_connection_t *client = connections->client_connection;
+    ngx_connection_t *upstream = connections->upstream_connection;
+
+    int n;
+
+    httplite_request_slab_t *response_slab = ngx_pcalloc(client->pool, sizeof(httplite_request_slab_t));
+    if (!response_slab) {
+        fprintf(stderr, "Unable to initialize response slab in httplite_upstream_read_handler.\n");
+        return;
+    }
+
+    response_slab->buffer = ngx_pnalloc(client->pool, SLAB_SIZE);
+    if (!response_slab->buffer) {
+        fprintf(stderr, "Unable to initialize buffer space in httplite_upstream_read_handler.\n");
+        return;
+    }
+
+    // read the content from the upstream and store it on the current connection so as to prevent blocking on the upstream connection
+    n = upstream->recv(upstream, response_slab->buffer, SLAB_SIZE);
+    response_slab->size += n;
+
+    // make sure that client has copy of the data as well
+    ((httplite_event_connection_t*)(upstream->data))->response = response_slab;
+    client->data = upstream->data;
+
+    // wait until client is write ready to send to client
+    if (!client->write->ready) {
+        ngx_add_timer(event, DEFAULT_CLIENT_WRITE_TIMEOUT);
+        return;
+    }
+
+    client->send(client, response_slab->buffer, response_slab->size);
+    upstream->read->handler = httplite_empty_read_handler;
+}
+
 /* Assumes incoming slab is empty (writes to buffer pointer, overwriting anything there) */
 size_t recv_wrapper(ngx_connection_t *c, httplite_request_slab_t *slab, ngx_event_t *rev) {
     int n;
+
+    const int NUM_UPSTREAMS = ((httplite_upstream_configuration_t*)(c->listening->servers))->upstreams.nelts;
+    static int upstream_index = 0;
     
     n = c->recv(c, slab->buffer, SLAB_SIZE);
 
+    httplite_upstream_configuration_t *upstream_configuration = c->listening->servers;
+    httplite_upstream_t *upstream_elements = upstream_configuration->upstreams.elts;
+    
+    // NOTE: Possible race condition below
+    httplite_upstream_t *upstream = &upstream_elements[upstream_index++ % NUM_UPSTREAMS];
+
+    httplite_refresh_upstream_connection(upstream);
+    ngx_connection_t *upstream_connection = upstream->peer.connection;
+
+    httplite_event_connection_t *connections = ngx_pcalloc(c->pool, sizeof(httplite_event_connection_t));
+    if (!connections) {
+        fprintf(stderr, "Unable to instantiate httplite_event_connection_t pointer.\n");
+        return NGX_ERROR;
+    }
+
+    connections->client_connection = c;
+    connections->upstream_connection = upstream_connection;
+    connections->request = slab;
+
+    upstream_connection->data = connections;
+    upstream_connection->read->handler = httplite_upstream_read_handler;
+
+    httplite_send_request_to_upstream(upstream, slab);
+
     if (n == NGX_AGAIN) {
         if (!rev->timer_set) {
-            ngx_add_timer(rev, 60 * 1000);
+            ngx_add_timer(rev, DEFAULT_SERVER_TIMEOUT);
             ngx_reusable_connection(c, 1);
         }
 
         if (ngx_handle_read_event(rev, 0) != NGX_OK) {
-            ngx_httplite_close_connection(c);
+            httplite_close_connection(c);
             return n;
         }
 
@@ -97,14 +170,14 @@ size_t recv_wrapper(ngx_connection_t *c, httplite_request_slab_t *slab, ngx_even
     }
 
     if (n == NGX_ERROR) {
-        ngx_httplite_close_connection(c);
+        httplite_close_connection(c);
         return n;
     }
 
     if (n == NGX_OK) {
         ngx_log_error(NGX_LOG_INFO, c->log, 0,
                       "client closed connection");
-        ngx_httplite_close_connection(c);
+        httplite_close_connection(c);
         return n;
     }
 
@@ -117,6 +190,7 @@ size_t recv_wrapper(ngx_connection_t *c, httplite_request_slab_t *slab, ngx_even
     return n;
 }
 
+// TODO: update this function to reflect new request structure
 void httplite_request_handler(ngx_event_t *rev) {
     ssize_t                    n;
     httplite_request_list_t    list;
@@ -129,12 +203,12 @@ void httplite_request_handler(ngx_event_t *rev) {
 
     if (rev->timedout) {
         ngx_log_error(NGX_LOG_INFO, c->log, NGX_ETIMEDOUT, "client timed out");
-        ngx_httplite_close_connection(c);
+        httplite_close_connection(c);
         return;
     }
 
     if (c->close) {
-        ngx_httplite_close_connection(c);
+        httplite_close_connection(c);
         return;
     }
 
@@ -144,17 +218,18 @@ void httplite_request_handler(ngx_event_t *rev) {
     
     if (list.head == NULL) {
         ngx_log_error(NGX_LOG_ALERT, c->log, 0, "unable to allocate space for the request slab.");
-        ngx_httplite_close_connection(c);
+        httplite_close_connection(c);
         return;
     }
 
     if (list.head->buffer == NULL) {
         ngx_log_error(NGX_LOG_ALERT, c->log, 0, "unable to allocate space for the request string.");
-        ngx_httplite_close_connection(c);
+        httplite_close_connection(c);
         return;
     }
 
     n = recv_wrapper(c, curr, rev);
+    printf("%s\n", curr->buffer);
 
     if (n <= 0) {
         ngx_log_error(NGX_LOG_ALERT, c->log, 0, "failed recv.");

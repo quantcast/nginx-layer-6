@@ -10,6 +10,8 @@ CONFIGURE=0
 VERBOSE=0
 QUIET=0
 REMOVE_OUT=1
+DEBUG=0
+CURRENT_DIR=$(pwd)
 
 # either the absolute path to the module or the relative path from nginx to the module
 # do not have to change if the run file is in the module
@@ -46,9 +48,14 @@ while [[ $# -gt 0 ]]; do
             REMOVE_OUT=0
             shift
             ;;
-        -h|--help)
+        -d|--debug)
+            DEBUG=1
+            shift
+            ;;
+        -h|--help|-*|--*)
             echo 'Usage: ./run [options]'
             echo "    --configure (-c) - Reconfigures nginx"
+            echo "    --debug     (-d) - Makes nginx and opens in lldb debugger"
             echo "    --module    (-m) - Either the absolute path to the module or the relative path from nginx to the module (default \"../nginx-layer-6\")"
             echo "    --preserve  (-p) - Preserve the out/ directory (does not delete between runs)"
             echo "    --verbose   (-v) - Shows the make output"
@@ -56,18 +63,10 @@ while [[ $# -gt 0 ]]; do
             shift
             exit 0
             ;;
-        -*|--*)
-            echo "Unknown option $1"
-            echo 'Usage: ./run [options]'
-            echo "    --configure (-c) - Reconfigures nginx"
-            echo "    --module    (-m) - Either the absolute path to the module or the relative path from nginx to the module (default \"../nginx-layer-6\")"
-            echo "    --preserve  (-p) - Preserve the out/ directory (does not delete between runs)"
-            echo "    --verbose   (-v) - Shows the make output"
-            echo "    --quiet     (-q) - Silence all output"
-            exit 1
-            ;;
     esac
 done
+
+CURRENT_DIR=$(pwd)
 
 cd $NGINX_PATH
 
@@ -112,11 +111,14 @@ else
     make >> /dev/null;
 fi
 
-echo "Starting nginx"
+echo "Starting nginx using configuration $CURRENT_DIR/nginx.conf"
 # logic for quiet command
 if [ $QUIET == 1 ]
 then
-    out/sbin/nginx >> /dev/null
+    out/sbin/nginx -c $CURRENT_DIR/nginx.conf >> /dev/null
+elif [ $DEBUG == 1 ]
+then
+    lldb out/sbin/nginx
 else
-    out/sbin/nginx
+    out/sbin/nginx -c $CURRENT_DIR/nginx.conf
 fi
