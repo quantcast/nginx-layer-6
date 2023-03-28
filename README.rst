@@ -22,4 +22,6 @@ directory. These sample bodies can be retrieved in either one recv call (`post_b
 However, we made it easier that you make request calls by using a file that assembles them for us.
 For example to make a POST call to post_body_2048.txt file, use this script
 
-./scripts/make-request -t POST -h localhost -p 8888 -f ./test/requests/post_body_2048.txt
+./scripts/make-request -h localhost -p 8888 -f ./test/requests/post_body_2048.txt
+
+for a GET request, omit the -f part.
