@@ -186,7 +186,7 @@ void httplite_request_handler(ngx_event_t *rev) {
     printRequests(read_list);
     write_list = split_request(read_list, write_list);
     //printRequests(write_list);
-    //printf("%zu\n\n",n);
+    printf("%zu\n\n",n);
 }
 
 /* given a list of slabs, break it up into a list of lists, 
@@ -346,7 +346,7 @@ void copy_to_list(httplite_request_list_t *write_list, size_t read_size,
 /*Helper methods to print out requests in the queue*/
 
 void printRequests (httplite_request_list_t *requests) {
-    printf("%s", "Printing requests' queque\n\n");
+    printf("%s", "Printing request queue\n\n");
     httplite_request_list_t *curr = requests;
     size_t i = 1;
     if(curr == NULL){
@@ -354,30 +354,31 @@ void printRequests (httplite_request_list_t *requests) {
         fflush(stdout);
     }
     while(curr != NULL){
-        printf("%s","Starting to print request ");
-        printf("%zu\n\n", i);
+        printf("\n---------------Printing request %zu---------------\n", i);
         printRequest(curr);
-        printf("%s", "\n\nDone with the request ");
-        printf("%zu\n\n", i);
+        printf("\n-------------Done printing request %zu-------------\n", i);
         i++;
         curr = curr->next;
     }
-    printf("%s", "Done printing requests' queue \n\n");
+    printf("%s", "Done printing request queue \n\n");
     fflush(stdout);
 }
 
 void printRequest(httplite_request_list_t *request) {
-        httplite_request_slab_t *curr = request->head;
-        // printf("%zu",curr->size);
-        size_t i = 1;
-        while(curr != NULL) {
-            printf("%s","Starting to print slab ");
-            printf("%zu\n\n", i);
-            printf("%s", curr->buffer);
-            printf("%s", "\n\nDone with the slab ");
-            printf("%zu\n\n", i);
-            fflush(stdout);
-            ++i;
-            curr = curr->next;
+    httplite_request_slab_t *curr = request->head;
+    // printf("%zu",curr->size);
+    size_t i = 1;
+    while(curr != NULL) {
+        // printf("%s","Starting to print slab ");
+        // printf("%zu\n\n", i);
+        printf("%s", curr->buffer);
+        if (i > 1) {
+            printf("\n****NEW SLAB****\n");
+        }
+        // printf("%s", "\n\nDone with the slab ");
+        // printf("%zu\n\n", i);
+        fflush(stdout);
+        ++i;
+        curr = curr->next;
     }
 }
