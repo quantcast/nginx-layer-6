@@ -2,5 +2,6 @@
   "name": "Debian",
   "dockerFile": "Dockerfile",
   "capAdd": ["SYS_PTRACE"],
-  "securityOpt": ["seccomp=unconfined"]
+  "securityOpt": ["seccomp=unconfined"],
+  "postStartCommand": "chmod +x ./scripts/startup && ./scripts/startup"
 }

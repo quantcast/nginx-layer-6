@@ -1,0 +1,5 @@
+#!/bin/bash
+
+mkdir /root/.config
+mkdir /root/.config/gdb
+echo "add-auto-load-safe-path /workspaces/nginx-layer-6/.gdbinit" > /root/.config/gdb/gdbinit
