@@ -29,7 +29,7 @@ httplite_request_list_t *httplite_init_list(ngx_connection_t *connection) {
     }
 
     head->size = 0;
-    
+    head->next = NULL;
     list->head = head;
     list->tail = head;
     list->connection = connection;
@@ -178,14 +178,15 @@ void httplite_request_handler(ngx_event_t *rev) {
             break;
         }
     }
-
+    
     if (n <= 0) {
         ngx_log_error(NGX_LOG_ALERT, c->log, 0, "failed recv.");
         return;
     }
-
+    printRequests(read_list);
     write_list = split_request(read_list, write_list);
-    printRequests(write_list);
+    //printRequests(write_list);
+    //printf("%zu\n\n",n);
 }
 
 /* given a list of slabs, break it up into a list of lists, 
@@ -356,21 +357,27 @@ void printRequests (httplite_request_list_t *requests) {
         printf("%s","Starting to print request ");
         printf("%zu\n\n", i);
         printRequest(curr);
-        printf("%s", "Done with the request ");
+        printf("%s", "\n\nDone with the request ");
         printf("%zu\n\n", i);
         i++;
         curr = curr->next;
     }
-    printf("%s", "Done printing requests' queue\n\n");
+    printf("%s", "Done printing requests' queue \n\n");
     fflush(stdout);
 }
 
 void printRequest(httplite_request_list_t *request) {
         httplite_request_slab_t *curr = request->head;
-        // printf("%zu",curr->size); 
+        // printf("%zu",curr->size);
+        size_t i = 1;
         while(curr != NULL) {
-            printf("%s\n\n", curr->buffer);
+            printf("%s","Starting to print slab ");
+            printf("%zu\n\n", i);
+            printf("%s", curr->buffer);
+            printf("%s", "\n\nDone with the slab ");
+            printf("%zu\n\n", i);
             fflush(stdout);
+            ++i;
             curr = curr->next;
     }
 }
