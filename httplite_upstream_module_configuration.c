@@ -57,6 +57,8 @@ httplite_create_upstream_configuration(ngx_conf_t *cf)
     cucf->balancing_algorithm = 0;
     cucf->pool = ngx_create_pool(NGX_DEFAULT_POOL_SIZE, cf->log);
 
+    cucf->keep_alive = NGX_CONF_UNSET;
+
     return cucf;
 }
 
@@ -101,109 +103,3 @@ char* httplite_parse_upstream_server(ngx_conf_t *cf, ngx_command_t *cmd, void *d
 
     return NGX_CONF_OK;
 }
-
-/*
-static char *
-ngx_tcp_upstream_check(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) 
-{
-    ngx_tcp_upstream_srv_conf_t  *uscf = conf;
-
-    ngx_str_t   *value, s;
-    ngx_uint_t   i, rise, fall;
-    ngx_msec_t   interval, timeout;
-
-    rise = 2;
-    fall = 5;
-    interval = 30000;
-    timeout = 1000;
-
-    value = cf->args->elts;
-
-    for (i = 1; i < cf->args->nelts; i++) {
-
-        if (ngx_strncmp(value[i].data, "type=", 5) == 0) {
-            s.len = value[i].len - 5;
-            s.data = value[i].data + 5;
-
-            uscf->check_type_conf = ngx_tcp_get_check_type_conf(&s);
-
-            if ( uscf->check_type_conf == NULL) {
-                goto invalid_check_parameter;
-            }
-
-            continue;
-        }
-
-        if (ngx_strncmp(value[i].data, "interval=", 9) == 0) {
-            s.len = value[i].len - 9;
-            s.data = value[i].data + 9;
-
-            interval = ngx_atoi(s.data, s.len);
-            if (interval == (ngx_msec_t) NGX_ERROR) {
-                goto invalid_check_parameter;
-            }
-
-            continue;
-        }
-
-        if (ngx_strncmp(value[i].data, "timeout=", 8) == 0) {
-            s.len = value[i].len - 8;
-            s.data = value[i].data + 8;
-
-            timeout = ngx_atoi(s.data, s.len);
-            if (timeout == (ngx_msec_t) NGX_ERROR) {
-                goto invalid_check_parameter;
-            }
-
-            continue;
-        }
-
-        if (ngx_strncmp(value[i].data, "rise=", 5) == 0) {
-            s.len = value[i].len - 5;
-            s.data = value[i].data + 5;
-
-            rise = ngx_atoi(s.data, s.len);
-            if (rise == (ngx_uint_t) NGX_ERROR) {
-                goto invalid_check_parameter;
-            }
-
-            continue;
-        }
-
-        if (ngx_strncmp(value[i].data, "fall=", 5) == 0) {
-            s.len = value[i].len - 5;
-            s.data = value[i].data + 5;
-
-            fall = ngx_atoi(s.data, s.len);
-            if (fall == (ngx_uint_t) NGX_ERROR) {
-                goto invalid_check_parameter;
-            }
-
-            continue;
-        }
-
-        goto invalid_check_parameter;
-    }
-
-    uscf->check_interval = interval;
-    uscf->check_timeout = timeout;
-    uscf->fall_count = fall;
-    uscf->rise_count = rise;
-
-    if (uscf->check_type_conf == NULL) {
-        s.len = sizeof("tcp") - 1;
-        s.data =(u_char *) "tcp";
-
-        uscf->check_type_conf = ngx_tcp_get_check_type_conf(&s);
-    }
-
-    return NGX_CONF_OK;
-
-invalid_check_parameter:
-
-    ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
-                       "invalid parameter \"%V\"", &value[i]);
-
-    return NGX_CONF_ERROR;
-}
-*/
