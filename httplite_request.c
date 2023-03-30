@@ -108,7 +108,6 @@ void httplite_upstream_read_handler(ngx_event_t *event) {
 
     // wait until client is write ready to send to client
     if (!client->write->ready) {
-        printf("client not ready to write yet\n");
         ngx_add_timer(event, DEFAULT_CLIENT_WRITE_TIMEOUT);
         return;
     }
@@ -217,6 +216,7 @@ void httplite_request_handler(ngx_event_t *rev) {
     }
 
     n = recv_wrapper(c, curr, rev);
+    printf("%s\n", curr->buffer);
 
     if (n <= 0) {
         ngx_log_error(NGX_LOG_ALERT, c->log, 0, "failed recv.");

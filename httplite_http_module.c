@@ -18,7 +18,7 @@ ngx_command_t httplite_http_commands[] = {
     },
 
     {
-        ngx_string("listen"),
+        ngx_string("port"),
         HTTPLITE_SERVER_CONFIGURATION | NGX_CONF_TAKE1,
         ngx_conf_set_num_slot,
         HTTPLITE_SERVER_CONFIGURATION_OFFSET,

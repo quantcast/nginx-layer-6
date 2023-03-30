@@ -38,7 +38,7 @@ httplite_upstream_t *httplite_create_upstream(ngx_pool_t *pool, ngx_array_t *arr
 
     name = ngx_pcalloc(pool, sizeof(ngx_str_t));
     name->data = ngx_pnalloc(pool, INET_ADDRSTRLEN);
-    name->data = address;
+    name->data = (u_char*) address;
     name->len = strlen(address) - 1;
 
     upstream->pool = pool;
