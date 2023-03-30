@@ -8,6 +8,7 @@
 
 #define CONNECTION_KEYWORD "connection"
 #define DEFAULT_CONNECTIONS 5
+#define DEFAULT_PORT 80
 
 char *
 httplite_core_upstream(ngx_conf_t *cf, ngx_command_t *cmd, void *dummy)
@@ -73,7 +74,12 @@ char* httplite_parse_upstream_server(ngx_conf_t *cf, ngx_command_t *cmd, void *d
 
     upstream_server = (char*)value[1].data;
     port_str = strstr(upstream_server, ":") + 1;
-    port = atoi(port_str);
+
+    if (port_str == NULL) {
+        port = DEFAULT_PORT;
+    } else {
+        port = atoi(port_str);
+    }
 
     /* parsing the port number from the first argument */
     server_len = port_str - upstream_server;
