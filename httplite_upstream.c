@@ -63,9 +63,21 @@ ngx_int_t httplite_free_upstream(httplite_upstream_t* upstream) {
     return NGX_OK;
 }
 
+void test_handler(ngx_event_t *ev) {
+    printf("hello there general kenobi\n");
+}
+
 void httplite_refresh_upstream_connection(httplite_upstream_t *upstream) {
     // TODO: Add testing logic to check if the connection is already made
     ngx_int_t result = ngx_event_connect_peer(&upstream->peer);
+
+    if (result == NGX_AGAIN) {
+        ngx_event_t *event = ngx_pcalloc(upstream->pool, sizeof(ngx_event_t));
+
+        event->handler = test_handler;
+
+        ngx_add_timer(event, 5000);
+    }
 
     if (result != NGX_OK && result != NGX_AGAIN) {
         fprintf(stderr, "Something went wrong when creating connection.\n");
