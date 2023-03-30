@@ -43,7 +43,7 @@ httplite_request_list_t *httplite_init_list(ngx_connection_t *connection);
  * when done, read_slab and read_start_ptr will point to end of copied region
  * (read_start_ptr points to within read_slab's buffer)
 */
-void copy_to_list(httplite_request_list_t *write_list, size_t size, httplite_request_slab_t **read_slab, u_char **read_start_ptr);
+void copy_to_list(httplite_request_list_t *write_list, size_t size, httplite_request_slab_t **read_slab, u_char **read_start_ptr, u_char **slab_end_ptr);
 
 
 /**
