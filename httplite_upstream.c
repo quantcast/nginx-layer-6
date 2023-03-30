@@ -8,7 +8,7 @@
 
 static void httplite_empty_upstream_handler() {}
 
-httplite_upstream_t *httplite_create_upstream(ngx_array_t *arr, char *address, ngx_int_t port, ngx_pool_t *pool) {
+httplite_upstream_t *httplite_create_upstream(ngx_pool_t *pool, ngx_array_t *arr, char *address, ngx_int_t port) {
     httplite_upstream_t *upstream;
     struct sockaddr_in *socket_address;
     size_t socket_length;

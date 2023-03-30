@@ -122,11 +122,8 @@ size_t recv_wrapper(ngx_connection_t *c, httplite_request_slab_t *slab, ngx_even
     int n;
     n = c->recv(c, slab->buffer, SLAB_SIZE);
 
-    httplite_connection_pool_t *connection_pool;
-    httplite_upstream_t *upstream;
-
-    connection_pool = ((httplite_upstream_configuration_t*)(c->listening->servers))->connection_pool;
-    upstream = fetch_upstream(connection_pool);
+    httplite_connection_pool_t *connection_pool = ((httplite_upstream_configuration_t*)(c->listening->servers))->connection_pool;
+    httplite_upstream_t *upstream = fetch_upstream(connection_pool);
 
     httplite_refresh_upstream_connection(upstream);
     ngx_connection_t *upstream_connection = upstream->peer.connection;
