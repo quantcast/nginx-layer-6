@@ -7,6 +7,8 @@
 
 #define SLAB_SIZE 1500      /* MTU size */
 
+enum HTTP_method{GET, POST};
+
 typedef struct httplite_request_slab_s {
     u_char *buffer;                         /* A pointer to the memory holding the request string */
     struct httplite_request_slab_s *next;   /* A pointer to the next slab in the linked list */
@@ -43,7 +45,7 @@ httplite_request_list_t *httplite_init_list(ngx_connection_t *connection);
  * when done, read_slab and read_start_ptr will point to end of copied region
  * (read_start_ptr points to within read_slab's buffer)
 */
-void copy_to_list(httplite_request_list_t *write_list, size_t size, httplite_request_slab_t **read_slab, u_char **read_start_ptr, u_char **slab_end_ptr);
+void copy_to_list(httplite_request_list_t *write_list, size_t size, httplite_request_slab_t **read_slab, u_char **read_start_ptr);
 
 
 /**
@@ -76,7 +78,8 @@ size_t recv_wrapper(ngx_connection_t *c, httplite_request_slab_t *request, ngx_e
  * @returns 1 if str is an HTTP method, 0 if str is not an HTTP method
 */
 size_t check_http_method(u_char *str);
-httplite_request_list_t *split_request (httplite_request_list_t *read_list, httplite_request_list_t *write_list);
+httplite_request_list_t *split_request (httplite_request_list_t *read_list, httplite_request_list_t *write_list,
+                                        ngx_connection_t *c);
 /**
  * Used to free a list that is not needed anymore by using ngx_free() instead of ngx_pfree() which is used to
  * free large allocations

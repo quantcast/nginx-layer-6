@@ -9,6 +9,10 @@
 #define LENGTH_HEADER_SIZE strlen(LENGTH_HEADER)
 #define HEADER_BODY_SEPARATOR "\r\n\r\n"
 #define HEADER_BODY_SEPARATOR_SIZE strlen(HEADER_BODY_SEPARATOR)
+#define HTTP_411_RESPONSE "HTTP/1.1 411 Length Required\r\nCache-Control: no-cache, private\r\n\r\n"
+
+#define str3_cmp(m, c0, c1, c2)     (m[0] == c0 && m[1] == c1 && m[2] == c2)
+#define str4_cmp(m, c0, c1, c2, c3) (m[0] == c0 && m[1] == c1 && m[2] == c2 && m[3] == c3)
 
 
 httplite_request_list_t *httplite_init_list(ngx_connection_t *connection) {
@@ -184,32 +188,38 @@ void httplite_request_handler(ngx_event_t *rev) {
         return;
     }
     //printRequests(read_list);
-    write_list = split_request(read_list, write_list);
+    write_list = split_request(read_list, write_list, c);
+
+    // if (write_list == NULL) {
+    //     ngx_httplite_close_connection(c);
+    // }
+
     printRequests(write_list);
-    printf("%zu\n\n",n);
+    printf("Total bytes read = %zu\n\n",n);
     fflush(stdout);
 }
 
 /* given a list of slabs, break it up into a list of lists, 
 * each one containing a single request 
 */
-httplite_request_list_t *split_request (httplite_request_list_t *read_list, httplite_request_list_t *write_list) {
-    u_char *curr, *start_ptr, *end_ptr;
+httplite_request_list_t *split_request (httplite_request_list_t *read_list, httplite_request_list_t *write_list, 
+                                        ngx_connection_t *c) {
+    u_char *curr, *start_ptr, *temp;
     httplite_request_slab_t *read_slab;
-    size_t l, first_iter;
+    size_t l, first_iter, header_size;
     ssize_t body_size;
     httplite_request_list_t *head;
+    enum HTTP_method method; 
     head = write_list; /* keeps track of the head of the list of lists to return at the end */
 
     read_slab = read_list->head;
     curr = read_slab->buffer;
-    end_ptr = read_slab->buffer + SLAB_SIZE;
     first_iter = 1;
 
     for(;;) { /* each iteration will find one request */
-        if(curr >= read_slab->buffer + read_slab->size || read_slab == NULL) {
-            break;
-            
+        if(read_slab == NULL || curr >= read_slab->buffer + read_slab->size) {
+            ngx_log_error(NGX_LOG_ALERT, c->log, 0, "error reading requests from connection buffer");
+            return NULL;
         }
 
         /* make a new list to hold the next request, except on the first iteration */
@@ -221,6 +231,7 @@ httplite_request_list_t *split_request (httplite_request_list_t *read_list, http
         ++first_iter;
 
         body_size = 0;
+        header_size = 0;
 
         /* start_ptr will point to the first location we HAVE NOT copied yet 
         *  each time we call copy, we advance start_ptr by that much 
@@ -229,61 +240,104 @@ httplite_request_list_t *split_request (httplite_request_list_t *read_list, http
         */
 
         start_ptr = curr;
-        //printf("%p\n", end_ptr);
-        // fflush(stdout);
-      
-        /* find "Content Length" header */
-        u_char* header_loc = ngx_strlcasestrn(start_ptr, end_ptr, (u_char*) LENGTH_HEADER, LENGTH_HEADER_SIZE - 1);
-        // TODO: check next slab for content length
-        // TODO: check if content length header is cut off by slab, e.g. "Content le"
-
-
-        /* get content length value */
-        if (header_loc != NULL) { 
-            curr = header_loc;
-            curr += LENGTH_HEADER_SIZE;
-            l = 0;
-
-            /* find size of substring containing value after the header */
-            while (*(curr + l) != '\r' && *(curr + l) != '\n') {
-                ++l;
-            }
-
-            body_size = ngx_atosz(curr, l);
-
-            curr += l;
-        } 
-        // TODO: if POST request and content length not found, throw a 411 and close connection
 
         /* find header-body separator 
         *  will set curr to first char of the separator */ 
         curr = (u_char*) ngx_strstr(curr, HEADER_BODY_SEPARATOR);
 
-        if (curr == NULL) { 
-            /* in this case, headers continue onto next slab.
-            * we need to copy what we currently have before moving to the next slab */
-            copy_to_list(write_list, end_ptr - start_ptr, &read_slab, &start_ptr, &end_ptr);
+        // TODO: handle when separator is split by packet boundary
+        if (curr == NULL) {
+            /* in this case (separator not found), headers continue onto next slab*/
+
+            /* confirm that the current slab is full */
+            if (read_slab->size != SLAB_SIZE) {
+                ngx_log_error(NGX_LOG_ALERT, c->log, 0, "header-body separator not found");
+                return NULL;
+            }
+
+            /* update header_size */
+            header_size += read_slab->buffer + read_slab->size - start_ptr;
+
+            /* copy what we currently have before moving to the next slab */
+            copy_to_list(write_list, header_size, &read_slab, &start_ptr);
 
             /* move to next slab */
             read_slab = read_slab->next;
             start_ptr = read_slab->buffer;
-            end_ptr   = read_slab->buffer + SLAB_SIZE;
 
             /* for now assuming that the end of the headers is on the next slab */
-            curr = (u_char*) ngx_strstr(start_ptr, HEADER_BODY_SEPARATOR); 
-            curr += HEADER_BODY_SEPARATOR_SIZE;
-        }
-        
-        /**
-        * To get the total request size:
-        *  size of headers                      = curr - start_ptr
-        *  size of headers + size of separator  = curr - start_ptr + HEADER_BODY_SEPARATOR_SIZE
-        *  size of entire request               = curr - start_ptr + HEADER_BODY_SEPARATOR_SIZE + body_size
-        */
-        size_t request_size = curr - start_ptr + HEADER_BODY_SEPARATOR_SIZE + body_size;
+            curr = (u_char*) ngx_strstr(start_ptr, HEADER_BODY_SEPARATOR);
 
-        copy_to_list(write_list, request_size, &read_slab, &start_ptr, &end_ptr);
+            if (curr == NULL) {
+                ngx_log_error(NGX_LOG_ALERT, c->log, 0, "header-body separator not found");
+                return NULL;
+            } 
+
+            curr += HEADER_BODY_SEPARATOR_SIZE;
+            header_size += curr - start_ptr;
+            
+            /* copy up to separator */
+            copy_to_list(write_list, curr - start_ptr, &read_slab, &start_ptr);
+        } else {
+            /* headers are all on the same slab */
+            curr += HEADER_BODY_SEPARATOR_SIZE;
+            header_size += curr - start_ptr;
+
+            /* copy up to end of separator */
+            copy_to_list(write_list, header_size, &read_slab, &start_ptr);
+        }
+
+        httplite_request_slab_t *header_slab = write_list->head;
+
+        if (str3_cmp(header_slab->buffer, 'G', 'E', 'T')) {
+            method = GET;
+        } else if (str4_cmp(header_slab->buffer, 'P', 'O', 'S', 'T')) {
+            method = POST;
+        } else {
+            ngx_log_error(NGX_LOG_ALERT, c->log, 0, "unknown method detected (only GET and POST accepted)");
+            ngx_httplite_close_connection(c);
+            return NULL;
+        }
+      
+        /* find "Content Length" header */
+        u_char* header_loc = ngx_strlcasestrn(header_slab->buffer, header_slab->buffer + header_slab->size, 
+                                              (u_char*) LENGTH_HEADER, LENGTH_HEADER_SIZE - 1);
+
+        /* get content length value */
+        if (header_loc != NULL) { 
+            if (method == GET) { /* GET request should not have a body */
+                // TODO: verify that this 411 response is sent correctly (here and elsewhere)
+                c->send(c, (u_char*) HTTP_411_RESPONSE, strlen(HTTP_411_RESPONSE));
+                ngx_log_error(NGX_LOG_ALERT, c->log, 0, "411: GET request should not have body");
+                ngx_httplite_close_connection(c);
+                return NULL;
+            }
+
+            curr = header_loc;
+            curr += LENGTH_HEADER_SIZE;
+            temp = curr;
+            l = 0;
+
+            /* find size of substring containing value after the header */
+            while (*curr != '\r' && *curr != '\n') {
+                ++curr;
+            }
+
+            body_size = ngx_atosz(temp, l);
+        } else {
+            if (method == POST) { /* POST request must have body */
+                c->send(c, (u_char*) HTTP_411_RESPONSE, strlen(HTTP_411_RESPONSE));
+                ngx_log_error(NGX_LOG_ALERT, c->log, 0, "411: POST request detected but no body found");
+                ngx_httplite_close_connection(c);
+                return NULL;
+            }
+        }
+
+        /* copy body */
+        copy_to_list(write_list, body_size, &read_slab, &start_ptr);
         curr = start_ptr;
+        printRequest(write_list);
+        fflush(stdout);
     }
 
     return head;
@@ -293,15 +347,13 @@ httplite_request_list_t *split_request (httplite_request_list_t *read_list, http
 *  see header file for documentation 
 */
 void copy_to_list(httplite_request_list_t *write_list, size_t read_size, 
-                    httplite_request_slab_t **read_slab, u_char **read_start_ptr, u_char **slab_end_ptr) {
+                    httplite_request_slab_t **read_slab, u_char **read_start_ptr) {
 
     /* base case */
     if (read_size == 0) { 
         return;
     }
 
-    /*TODO: read_length might not be needed: for now it's a safe net
-     when it happens read_length > read_size*/
     /* read_length = how much we need to read from current slab */
     size_t read_length = (*read_slab)->buffer + (*read_slab)->size - *read_start_ptr; 
    
@@ -336,7 +388,6 @@ void copy_to_list(httplite_request_list_t *write_list, size_t read_size,
     if (read_length - copy_bytes == 0 && read_size != 0) {
         *read_slab = (*read_slab)->next; 
         *read_start_ptr = (*read_slab)->buffer;
-        *slab_end_ptr  = (*read_slab)->buffer + SLAB_SIZE;
     }
 
     /* if we have filled up the current write slab and still needs to write, make a new one */
@@ -346,7 +397,7 @@ void copy_to_list(httplite_request_list_t *write_list, size_t read_size,
     }
 
     /* recursive call */
-    copy_to_list(write_list, read_size, read_slab, read_start_ptr, slab_end_ptr);
+    copy_to_list(write_list, read_size, read_slab, read_start_ptr);
 }
 
 /*Helper methods to print out requests in the queue*/
@@ -372,18 +423,12 @@ void printRequests (httplite_request_list_t *requests) {
 
 void printRequest(httplite_request_list_t *request) {
     httplite_request_slab_t *curr = request->head;
-    // printf("%zu",curr->size);
     size_t i = 1;
     while(curr != NULL) {
-        // printf("%s","Starting to print slab ");
-        // printf("%zu\n\n", i);
         if (i > 1) {
             printf("\n\n****NEW SLAB****\n\n");
         }
         printf("%s", curr->buffer);
-        
-        // printf("%s", "\n\nDone with the slab ");
-        // printf("%zu\n\n", i);
         fflush(stdout);
         ++i;
         curr = curr->next;
