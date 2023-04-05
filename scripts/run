@@ -118,7 +118,8 @@ then
     out/sbin/nginx -c $CURRENT_DIR/nginx.conf >> /dev/null
 elif [ $DEBUG == 1 ]
 then
-    lldb out/sbin/nginx
+    cd $CURRENT_DIR
+    gdb ../nginx/out/sbin/nginx
 else
     out/sbin/nginx -c $CURRENT_DIR/nginx.conf
 fi
