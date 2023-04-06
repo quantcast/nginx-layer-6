@@ -63,20 +63,35 @@ ngx_int_t httplite_free_upstream(httplite_upstream_t* upstream) {
     return NGX_OK;
 }
 
-void test_handler(ngx_event_t *ev) {
+void test_handler(ngx_event_t *wev) {
+    if (wev->timedout) {
+        ngx_log_error(NGX_ERROR_ALERT, wev->log, 0, "the request timed out\n");
+        return;
+    }
+
+    if (!wev->ready) {
+        printf("not ready\n");
+        return;
+    }
+
     printf("hello there general kenobi\n");
+}
+
+void mock_handler(ngx_event_t *rev) {
+    printf("I shouldn't be here\n");
 }
 
 void httplite_refresh_upstream_connection(httplite_upstream_t *upstream) {
     // TODO: Add testing logic to check if the connection is already made
     ngx_int_t result = ngx_event_connect_peer(&upstream->peer);
+    ngx_event_t *wev = upstream->peer.connection->write;
+    ngx_event_t *rev = upstream->peer.connection->read;
 
     if (result == NGX_AGAIN) {
-        ngx_event_t *event = ngx_pcalloc(upstream->pool, sizeof(ngx_event_t));
-
-        event->handler = test_handler;
-
-        ngx_add_timer(event, 5000);
+        wev->handler = test_handler;
+        rev->handler = mock_handler;
+        ngx_handle_write_event(wev, 0);
+        ngx_add_timer(wev, 5000);
     }
 
     if (result != NGX_OK && result != NGX_AGAIN) {
@@ -96,10 +111,17 @@ void httplite_handle_send_request_to_upstream(ngx_event_t *event) {
     u = r->upstream;
     c = u->peer.connection;
 
-    c->send(c, r->buffer, r->size);
+    if (c->send(c, r->buffer, r->size) == NGX_ERROR) {
+        ngx_log_error(NGX_LOG_WARN, event->log, 0, "unable to send request to upstream %s!", u->peer.name->data);
+        return;
+    }
 
     // after sending the message, prevent more of the same messages from sending
     c->write->handler = httplite_empty_upstream_handler;
+
+    if (c->write->ready) {
+        ngx_handle_write_event(c->write, 0);
+    }
 }
 
 void httplite_send_request_to_upstream(httplite_upstream_t *upstream, httplite_request_slab_t *request) {
@@ -117,7 +139,7 @@ void httplite_send_request_to_upstream(httplite_upstream_t *upstream, httplite_r
     
     connection->write->handler = httplite_handle_send_request_to_upstream;
     if (connection->write->ready) {
-        connection->send(connection, request->buffer, request->size);
+        ngx_handle_write_event(connection->write, 0);
     }
 }
 

@@ -113,8 +113,36 @@ void httplite_upstream_read_handler(ngx_event_t *event) {
         return;
     }
 
-    client->send(client, response_slab->buffer, response_slab->size);
-    upstream->read->handler = httplite_empty_handler;
+    int rc = client->send(client, response_slab->buffer, response_slab->size);
+
+    if (rc == NGX_AGAIN) {
+        // data was only partially sent, add write event
+        ngx_handle_write_event(client->write, 0);
+        return;
+    }
+
+    if (rc <= 0) {
+        // error or client closed the connection
+        httplite_close_connection(client);
+        httplite_close_connection(upstream);
+        return;
+    }
+
+    // data was fully sent, check if there's more to send
+    if (rc < response_slab->size) {
+        response_slab->buffer += rc;
+        response_slab->size -= rc;
+        ngx_handle_write_event(client->write, 0);
+        return;
+    }
+
+    // all data sent, reset upstream write handler
+    upstream->write->handler = httplite_empty_handler;
+
+    if (upstream->read->ready) {
+        // upstream has more data to send, add read event
+        ngx_handle_read_event(upstream->read, 0);
+    }
 }
 
 /* Assumes incoming slab is empty (writes to buffer pointer, overwriting anything there) */
@@ -129,22 +157,22 @@ size_t recv_wrapper(ngx_connection_t *c, httplite_request_slab_t *slab, ngx_even
     upstream = fetch_upstream(connection_pool);
 
     httplite_refresh_upstream_connection(upstream);
-    ngx_connection_t *upstream_connection = upstream->peer.connection;
+    // ngx_connection_t *upstream_connection = upstream->peer.connection;
 
-    httplite_event_connection_t *connections = ngx_pcalloc(c->pool, sizeof(httplite_event_connection_t));
-    if (!connections) {
-        fprintf(stderr, "Unable to instantiate httplite_event_connection_t pointer.\n");
-        return NGX_ERROR;
-    }
+    // httplite_event_connection_t *connections = ngx_pcalloc(c->pool, sizeof(httplite_event_connection_t));
+    // if (!connections) {
+    //     fprintf(stderr, "Unable to instantiate httplite_event_connection_t pointer.\n");
+    //     return NGX_ERROR;
+    // }
 
-    connections->client_connection = c;
-    connections->upstream_connection = upstream_connection;
-    connections->request = slab;
+    // connections->client_connection = c;
+    // connections->upstream_connection = upstream_connection;
+    // connections->request = slab;
 
-    upstream_connection->data = connections;
-    upstream_connection->read->handler = httplite_upstream_read_handler;
+    // upstream_connection->data = connections;
+    // upstream_connection->read->handler = httplite_upstream_read_handler;
 
-    httplite_send_request_to_upstream(upstream, slab);
+    // httplite_send_request_to_upstream(upstream, slab);
 
     if (n == NGX_AGAIN) {
         if (!rev->timer_set) {
