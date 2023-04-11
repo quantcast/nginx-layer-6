@@ -64,21 +64,25 @@ ngx_int_t httplite_free_upstream(httplite_upstream_t* upstream) {
 }
 
 void test_handler(ngx_event_t *wev) {
+    ngx_connection_t *c = wev->data;
+
     if (wev->timedout) {
+        printf("here!\n");
         ngx_log_error(NGX_ERROR_ALERT, wev->log, 0, "the request timed out\n");
         return;
     }
 
-    if (!wev->ready) {
+    if (!wev->ready || !c->pool) {
         printf("not ready\n");
+        ngx_handle_write_event(wev, 0);
         return;
     }
 
-    printf("hello there general kenobi\n");
+    printf("connection has been established\n");
 }
 
 void mock_handler(ngx_event_t *rev) {
-    printf("I shouldn't be here\n");
+    printf("mock handler called with rev. connection pool is %p\n", ((ngx_connection_t*)rev->data)->pool);
 }
 
 void httplite_refresh_upstream_connection(httplite_upstream_t *upstream) {
@@ -91,7 +95,7 @@ void httplite_refresh_upstream_connection(httplite_upstream_t *upstream) {
         wev->handler = test_handler;
         rev->handler = mock_handler;
         ngx_handle_write_event(wev, 0);
-        ngx_add_timer(wev, 5000);
+        ngx_add_timer(wev, 30000);
     }
 
     if (result != NGX_OK && result != NGX_AGAIN) {
