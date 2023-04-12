@@ -216,11 +216,7 @@ httplite_request_list_t *split_request (httplite_request_list_t *read_list, http
     curr = read_slab->buffer;
     first_iter = 1;
 
-    for(;;) { /* each iteration will find one request */
-        if(read_slab == NULL || curr >= read_slab->buffer + read_slab->size) {
-            ngx_log_error(NGX_LOG_ALERT, c->log, 0, "error reading requests from connection buffer");
-            return NULL;
-        }
+    while(read_slab != NULL && curr <= read_slab->buffer + read_slab->size) { /* each iteration will find one request */
 
         /* make a new list to hold the next request, except on the first iteration */
         if (first_iter != 1) {
@@ -255,11 +251,46 @@ httplite_request_list_t *split_request (httplite_request_list_t *read_list, http
                 return NULL;
             }
 
+            /* save these pointers before copying to use later when checking if separator is split */
+            u_char* end = read_slab->buffer + read_slab->size;
+            u_char* start = read_slab->next->buffer;
+
             /* update header_size */
-            header_size += read_slab->buffer + read_slab->size - start_ptr;
+            header_size = read_slab->buffer + read_slab->size - start_ptr;
 
             /* copy what we currently have before moving to the next slab */
             copy_to_list(write_list, header_size, &read_slab, &start_ptr);
+
+            /* check if separator is split across slabs */
+            if (read_slab->next == NULL) {
+                ngx_log_error(NGX_LOG_ALERT, c->log, 0, "cannot find next slab");
+                return NULL;
+            }
+
+            /* check if separator is split across slabs */
+            if (*(end - 3) == HEADER_BODY_SEPARATOR[0] &&
+                *(end - 2) == HEADER_BODY_SEPARATOR[1] &&
+                *(end - 1) == HEADER_BODY_SEPARATOR[2] &&
+                *(start)   == HEADER_BODY_SEPARATOR[3]) {
+                printf("\n\n--------split 1--------\n\n");
+                fflush(stdout);
+                copy_to_list(write_list, 1, &read_slab, &start_ptr);
+            } else if (*(end - 2) == HEADER_BODY_SEPARATOR[0] &&
+                       *(end - 1) == HEADER_BODY_SEPARATOR[1] &&
+                       *(start) == HEADER_BODY_SEPARATOR[2] &&
+                       *(start + 1)   == HEADER_BODY_SEPARATOR[3]) {
+                printf("\n\n--------split 2--------\n\n");
+                fflush(stdout);
+                copy_to_list(write_list, 2, &read_slab, &start_ptr);
+            } else if (*(end - 1) == HEADER_BODY_SEPARATOR[0] &&
+                       *(start) == HEADER_BODY_SEPARATOR[1] &&
+                       *(start + 1) == HEADER_BODY_SEPARATOR[2] &&
+                       *(start + 2)   == HEADER_BODY_SEPARATOR[3]) {
+                printf("\n\n--------split 3--------\n\n");
+                fflush(stdout);
+                copy_to_list(write_list, 3, &read_slab, &start_ptr);
+            }
+            // TODO: if these happen, the following strstr search should not happen
 
             /* move to next slab */
             read_slab = read_slab->next;

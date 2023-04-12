@@ -5,7 +5,7 @@
 #include <ngx_core.h>
 #include <ngx_event.h>
 
-#define SLAB_SIZE 1500      /* MTU size */
+#define SLAB_SIZE 400      /* MTU size */
 
 enum HTTP_method{GET, POST};
 
