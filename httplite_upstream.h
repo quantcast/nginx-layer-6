@@ -37,14 +37,21 @@ typedef struct {
 } httplite_event_connection_t;
 
 httplite_upstream_t* httplite_create_upstream(ngx_array_t *arr, char *address, ngx_int_t port, ngx_pool_t *pool);
+
 ngx_int_t httplite_free_upstream(httplite_upstream_t* upstream);
-void httplite_refresh_upstream_connection(httplite_upstream_t *upstream, void *upstream_data);
-httplite_upstream_t* fetch_upstream(httplite_connection_pool_t *c_pool);
 int httplite_check_broken_connection(ngx_connection_t *c);
-httplite_upstream_t *httplite_fetch_inactive_upstream(httplite_connection_pool_t *c_pool);
+void httplite_deactivate_upstream(httplite_upstream_t *u);
+
+void httplite_refresh_upstream_connection(httplite_upstream_t *upstream, void *upstream_data);
 void httplite_send_request_to_upstream(httplite_request_list_t *request);
+
+void httplite_keepalive_read_handler(ngx_event_t *rev);
+void httplite_keepalive_write_handler(ngx_event_t *wev);
 
 void httplite_upstream_read_handler(ngx_event_t *rev);
 void httplite_upstream_write_handler(ngx_event_t *wev);
+
+httplite_upstream_t* fetch_upstream(httplite_connection_pool_t *c_pool);
+httplite_upstream_t *httplite_fetch_inactive_upstream(httplite_connection_pool_t *c_pool);
 
 #endif
