@@ -160,16 +160,25 @@ void httplite_request_handler(ngx_event_t *rev) {
         return;
     }
 
-    n = recv_wrapper(c, curr, rev);
+    //n = recv_wrapper(c, curr, rev);
+    n = 0;
 
     /* read entire connection into read_list*/
-    while (rev->ready) {
+    //while (rev->ready) {
+    for (;;) {
         m = 0;
-        if (!httplite_add_slab(read_list)) {
-            ngx_log_error(NGX_LOG_ALERT, c->log, 0, "unable to add slab.");
-            return;
+        if (n != 0 && read_list->tail->size == SLAB_SIZE) {
+            if (!httplite_add_slab(read_list)) {
+                ngx_log_error(NGX_LOG_ALERT, c->log, 0, "unable to add slab.");
+                return;
+            }
         }
-        m = recv_wrapper(c, read_list->tail, rev);
+        m = recv(c->fd, read_list->tail->buffer + read_list->tail->size, SLAB_SIZE - read_list->tail->size, 0);
+        fflush(stdout);
+
+        if (m == -1) {
+            break;
+        }
 
         if (m < 0) { 
             ngx_log_error(NGX_LOG_ALERT, c->log, 0, "failed recv.");
@@ -177,14 +186,16 @@ void httplite_request_handler(ngx_event_t *rev) {
         }
 
         n += m;
-
-        if (m < SLAB_SIZE) {
-            break;
-        }
+        read_list->tail->size += m;
     }
+
+    /*n = recv(c->fd, read_list->tail->buffer, SLAB_SIZE, 0);
+    n += recv(c->fd, read_list->tail->buffer + read_list->tail->size, SLAB_SIZE, 0);*/
+    fflush(stdout);
     
     if (n <= 0) {
         ngx_log_error(NGX_LOG_ALERT, c->log, 0, "failed recv.");
+        ngx_httplite_close_connection(c);
         return;
     }
     //printRequests(read_list);
@@ -218,6 +229,18 @@ httplite_request_list_t *split_request (httplite_request_list_t *read_list, http
 
     while(read_slab != NULL && curr <= read_slab->buffer + read_slab->size) { /* each iteration will find one request */
 
+        if (curr == read_slab->buffer + read_slab->size) {
+            if (read_slab->next == NULL) {
+                break;
+            }
+            if (read_slab->size < SLAB_SIZE) {
+                ngx_log_error(NGX_LOG_ALERT, c->log, 0, "underfull slab followed by another slab");
+                ngx_httplite_close_connection(c);
+                return NULL;
+            }
+
+        }
+
         /* make a new list to hold the next request, except on the first iteration */
         if (first_iter != 1) {
             httplite_request_list_t *temp = httplite_init_list(write_list->connection);
@@ -241,15 +264,14 @@ httplite_request_list_t *split_request (httplite_request_list_t *read_list, http
         *  will set curr to first char of the separator */ 
         curr = (u_char*) ngx_strstr(curr, HEADER_BODY_SEPARATOR);
 
-        // TODO: handle when separator is split by packet boundary
         if (curr == NULL) {
             /* in this case (separator not found), headers continue onto next slab*/
 
             /* confirm that the current slab is full */
-            if (read_slab->size != SLAB_SIZE) {
-                ngx_log_error(NGX_LOG_ALERT, c->log, 0, "header-body separator not found");
+            /*if (read_slab->size != SLAB_SIZE) {
+                ngx_log_error(NGX_LOG_ALERT, c->log, 0, "current slab underfull ");
                 return NULL;
-            }
+            }*/
 
             /* save these pointers before copying to use later when checking if separator is split */
             u_char* end = read_slab->buffer + read_slab->size;
@@ -301,6 +323,7 @@ httplite_request_list_t *split_request (httplite_request_list_t *read_list, http
 
             if (curr == NULL) {
                 ngx_log_error(NGX_LOG_ALERT, c->log, 0, "header-body separator not found");
+                // TODO: close connection?
                 return NULL;
             } 
 
@@ -347,14 +370,19 @@ httplite_request_list_t *split_request (httplite_request_list_t *read_list, http
             curr = header_loc;
             curr += LENGTH_HEADER_SIZE;
             temp = curr;
-            l = 0;
 
             /* find size of substring containing value after the header */
             while (*curr != '\r' && *curr != '\n') {
                 ++curr;
             }
 
-            body_size = ngx_atosz(temp, l);
+            body_size = ngx_atosz(temp, curr - temp);
+
+            if (body_size < 0) {
+                ngx_log_error(NGX_LOG_ALERT, c->log, 0, "content length value invalid");
+                ngx_httplite_close_connection(c);
+                return NULL;
+            }
         } else {
             if (method == POST) { /* POST request must have body */
                 c->send(c, (u_char*) HTTP_411_RESPONSE, strlen(HTTP_411_RESPONSE));
@@ -367,10 +395,9 @@ httplite_request_list_t *split_request (httplite_request_list_t *read_list, http
         /* copy body */
         copy_to_list(write_list, body_size, &read_slab, &start_ptr);
         curr = start_ptr;
-        printRequest(write_list);
-        fflush(stdout);
     }
 
+    printRequests(head);
     return head;
 }
 
