@@ -66,6 +66,10 @@ ngx_int_t httplite_free_upstream(httplite_upstream_t* upstream) {
     return NGX_OK;
 }
 
+void httplite_deactivate_upstream(httplite_upstream_t *u) {
+    u->active = 0;
+}
+
 void httplite_keepalive_write_handler(ngx_event_t *wev) {
     ngx_connection_t *c = wev->data;
     httplite_event_connection_t *connections;
@@ -80,9 +84,17 @@ void httplite_keepalive_write_handler(ngx_event_t *wev) {
         return;
     }
 
+    connections = c->data;
+    u = connections->upstream;
+
     if (wev->timedout) {
-        ngx_log_error(NGX_ERROR_ALERT, wev->log, 0, "the request timed out\n");
+        httplite_deactivate_upstream(u);
         httplite_close_connection(c);
+
+        printf("keep alive time out has been hit. closing connection\n");
+        fflush(stdin);
+        
+        ngx_log_error(NGX_ERROR_ALERT, wev->log, 0, "the request timed out\n");
         return;
     }
 
@@ -90,7 +102,6 @@ void httplite_keepalive_write_handler(ngx_event_t *wev) {
         return;
     }
 
-    connections = c->data;
     u->active = 1;
 }
 
@@ -131,15 +142,15 @@ void httplite_refresh_upstream_connection(httplite_upstream_t *upstream, void *u
     if (result == NGX_AGAIN) {
         // if the upstream has a data field, then set the write handler to
         // the proper handler to forward connections
+        upstream->peer.connection->data = upstream_data;
         if (upstream->request) {
-            upstream->peer.connection->data = upstream_data;
             wev->handler = httplite_upstream_write_handler;
             rev->handler = httplite_upstream_read_handler;
-            return;
+        } else {
+            wev->handler = httplite_keepalive_write_handler;
+            rev->handler = httplite_keepalive_read_handler;
         }
-        wev->handler = httplite_keepalive_write_handler;
-        rev->handler = httplite_keepalive_read_handler;
-        ngx_add_timer(wev, 10000);
+        ngx_add_timer(wev, 2000);
     }
 
     if (result != NGX_OK && result != NGX_AGAIN) {
@@ -163,6 +174,14 @@ void httplite_upstream_write_handler(ngx_event_t *wev) {
     }
 
     u = ((httplite_event_connection_t*) c->data)->upstream;
+
+    if (wev->timedout) {
+        printf("timed out!\n");
+        httplite_close_connection(c);
+        httplite_deactivate_upstream(u);
+        return;
+    }
+
     list = u->request;
     r = list->curr;
 
@@ -183,7 +202,7 @@ void httplite_upstream_write_handler(ngx_event_t *wev) {
     if (!list->curr) {
         u->busy = 0;
         wev->handler = httplite_keepalive_write_handler;
-        ngx_add_timer(wev, 30000);
+        ngx_add_timer(wev, 2000);
         return;
     }
 }
@@ -192,7 +211,7 @@ void httplite_upstream_read_handler(ngx_event_t *rev) {
     ngx_connection_t *c = rev->data;
     httplite_event_connection_t *connections;
     ngx_connection_t *client;
-    httplite_upstream_t *upstream;
+    httplite_upstream_t *u;
     httplite_request_slab_t *response_slab;
     int n;
 
@@ -203,7 +222,14 @@ void httplite_upstream_read_handler(ngx_event_t *rev) {
 
     connections = c->data;
     client = connections->client_connection;
-    upstream = connections->upstream;
+    u = connections->upstream;
+
+    if (rev->timedout) {
+        printf("timed out!\n");
+        httplite_close_connection(c);
+        httplite_deactivate_upstream(u);
+        return;
+    }
 
     response_slab = ngx_pcalloc(client->pool, sizeof(httplite_request_slab_t));
     if (!response_slab) {
@@ -221,7 +247,7 @@ void httplite_upstream_read_handler(ngx_event_t *rev) {
     n = c->recv(c, response_slab->buffer, SLAB_SIZE);
     response_slab->size += n;
 
-    upstream->response = response_slab;
+    u->response = response_slab;
 
     // wait until client is write ready to send to client
     if (!client->write->ready) {
