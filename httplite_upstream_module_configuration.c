@@ -46,6 +46,7 @@ httplite_create_upstream_configuration(ngx_conf_t *cf)
     }
 
     cucf->connection_pool = ngx_pcalloc(cf->pool, sizeof(httplite_connection_pool_t));
+    cucf->connection_pool->pool = cf->pool;
     if (!cucf->connection_pool) {
         fprintf(stderr, "Unable to allocate space for connection pool.\n");
         return NULL;

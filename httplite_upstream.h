@@ -36,6 +36,18 @@ typedef struct {
     httplite_upstream_t *upstream;
 } httplite_event_connection_t;
 
+typedef struct {
+    httplite_upstream_pool_t* upstream_pool;
+    int upstream_index;
+    int start_index;
+} httplite_upstream_pool_iterator_t;
+
+typedef struct {
+    httplite_connection_pool_t *connection_pool;
+    int upstream_pool_index;
+    ngx_array_t* upstream_pool_iterators;
+} httplite_connection_pool_iterator_t;
+
 httplite_upstream_t* httplite_create_upstream(ngx_array_t *arr, char *address, ngx_int_t port, ngx_pool_t *pool);
 
 ngx_int_t httplite_free_upstream(httplite_upstream_t* upstream);
@@ -53,5 +65,9 @@ void httplite_upstream_write_handler(ngx_event_t *wev);
 
 httplite_upstream_t* fetch_upstream(httplite_connection_pool_t *c_pool);
 httplite_upstream_t *httplite_fetch_inactive_upstream(httplite_connection_pool_t *c_pool);
+httplite_upstream_pool_t *httplite_next_upstream_pool(httplite_connection_pool_iterator_t *connection_pool_iterator);
+int httplite_has_next_upstream(httplite_connection_pool_iterator_t *connection_pool_iterator);
+httplite_upstream_t *httplite_next_upstream(httplite_connection_pool_iterator_t *connection_pool_iterator);
+httplite_connection_pool_iterator_t *httplite_create_connection_pool_iterator(httplite_connection_pool_t *connection_pool);
 
 #endif

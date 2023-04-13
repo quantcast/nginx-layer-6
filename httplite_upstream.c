@@ -318,56 +318,101 @@ void httplite_upstream_write_handler(ngx_event_t *wev) {
     }
 }
 
-httplite_upstream_t *fetch_upstream(httplite_connection_pool_t *c_pool) {
-    httplite_upstream_pool_t    *upstream_pool;
-    httplite_upstream_t         *u;
+httplite_upstream_pool_t *httplite_next_upstream_pool(httplite_connection_pool_iterator_t *connection_pool_iterator) {
+    httplite_connection_pool_t *connection_pool; 
+    int *upstream_pool_index; 
+    ngx_uint_t total_upstream_pools;
 
-    int *upstream_pool_index, *upstream_index;
-    ngx_uint_t num_upstream_pools, num_upstreams;
+    connection_pool = connection_pool_iterator->connection_pool;
+    upstream_pool_index = &connection_pool_iterator->upstream_pool_index;
+    total_upstream_pools = connection_pool->upstream_pools->nelts;
 
-    /* Get the upstream pool currently pointed to */
-    upstream_pool_index = &c_pool->pool_index;
-    *upstream_pool_index++;
+    *upstream_pool_index = (*upstream_pool_index + 1) % total_upstream_pools;
+    connection_pool->pool_index = *upstream_pool_index;
 
-    num_upstream_pools = c_pool->upstream_pools->nelts;
-    upstream_pool = &((httplite_upstream_pool_t *)(c_pool->upstream_pools->elts))[*upstream_pool_index % num_upstream_pools];
+    return &((httplite_upstream_pool_t *)
+        (connection_pool->upstream_pools->elts))[*upstream_pool_index];
+}
 
+int httplite_has_next_upstream(httplite_connection_pool_iterator_t *connection_pool_iterator) {
+    ngx_uint_t num_upstreams;
+    httplite_upstream_pool_iterator_t upstream_pool_iterator;
+    httplite_upstream_pool_t* upstream_pool;
+    
+    upstream_pool_iterator = ((httplite_upstream_pool_iterator_t*) connection_pool_iterator->
+        upstream_pool_iterators->elts)[connection_pool_iterator->upstream_pool_index];
+    upstream_pool = upstream_pool_iterator.upstream_pool;
     num_upstreams = upstream_pool->upstreams->nelts;
-    int i = 1; 
-    while (i < num_upstreams + 1) {
-        int upstream_index_to_check = (upstream_pool->upstream_index + i) % num_upstreams;
-        httplite_upstream_t *upstream_to_check = &((httplite_upstream_t*)upstream_pool->upstreams->elts)[upstream_index_to_check];
-        if (upstream_to_check->active && !upstream_to_check->busy) {
-            upstream_index = &upstream_pool->upstream_index;
-            *upstream_index += i;
 
-            u = &((httplite_upstream_t*)(upstream_pool->upstreams->elts))[*upstream_index % num_upstreams];
+    return upstream_pool->upstream_index % num_upstreams == upstream_pool_iterator.start_index;
+}
+
+httplite_upstream_t *httplite_next_upstream(httplite_connection_pool_iterator_t *connection_pool_iterator) {
+    ngx_uint_t num_upstreams;
+    httplite_upstream_pool_iterator_t upstream_pool_iterator;
+    httplite_upstream_pool_t* upstream_pool;
+
+    upstream_pool_iterator = ((httplite_upstream_pool_iterator_t*) connection_pool_iterator->
+        upstream_pool_iterators->elts)[connection_pool_iterator->upstream_pool_index];
+    upstream_pool = upstream_pool_iterator.upstream_pool;
+    num_upstreams = upstream_pool->upstreams->nelts;
+
+    upstream_pool_iterator.upstream_index = (upstream_pool->upstream_index + 1) % num_upstreams;
+    upstream_pool->upstream_index = upstream_pool_iterator.upstream_index;
+
+    return &((httplite_upstream_t*)upstream_pool->upstreams->elts)[upstream_pool->upstream_index];
+}
+
+httplite_connection_pool_iterator_t *httplite_create_connection_pool_iterator(httplite_connection_pool_t *connection_pool) {
+    httplite_connection_pool_iterator_t *connection_pool_iterator;
+    httplite_upstream_pool_iterator_t* upstream_pool_iterator;
+    httplite_upstream_pool_t* upstream_pool;
+    ngx_array_t *upstream_pool_iterators;
+
+    upstream_pool_iterators = ngx_array_create(connection_pool->pool, 32, sizeof(httplite_upstream_pool_iterator_t));
+    connection_pool_iterator = ngx_pcalloc(connection_pool->pool, sizeof(httplite_connection_pool_iterator_t));
+    connection_pool_iterator->connection_pool = connection_pool;
+    connection_pool_iterator->upstream_pool_index = connection_pool->pool_index,
+    connection_pool_iterator->upstream_pool_iterators = upstream_pool_iterators;
+
+    for (int i = 0; i < connection_pool->upstream_pools->nelts; i++) {
+        upstream_pool = &((httplite_upstream_pool_t*)connection_pool->upstream_pools->elts)[i];
+        upstream_pool_iterator = ngx_array_push(upstream_pool_iterators);
+        upstream_pool_iterator->start_index = upstream_pool->upstream_index;
+        upstream_pool->upstream_index = upstream_pool_iterator->start_index;
+        upstream_pool_iterator->upstream_pool = upstream_pool;
+    }
+
+    return connection_pool_iterator;
+}
+
+httplite_upstream_t *fetch_upstream(httplite_connection_pool_t *c_pool) {
+    httplite_upstream_t         *u;
+    httplite_connection_pool_iterator_t* connection_pool_iterator;
+
+    connection_pool_iterator = httplite_create_connection_pool_iterator(c_pool);
+    httplite_next_upstream_pool(connection_pool_iterator);
+
+    while (httplite_has_next_upstream(connection_pool_iterator)) {
+        u = httplite_next_upstream(connection_pool_iterator);
+
+        if (u->active && !u->busy) {
             return u;
         }
-
-        i++;
     }
 
     return NULL;
 }
 
 httplite_upstream_t *httplite_fetch_inactive_upstream(httplite_connection_pool_t *c_pool) {
-    httplite_upstream_pool_t    *upstream_pool;
-    httplite_upstream_t         *u;
+    httplite_upstream_t *u;
+    httplite_connection_pool_iterator_t* connection_pool_iterator;
 
-    int upstream_pool_index, upstream_index;
-    ngx_uint_t num_upstream_pools, num_upstreams;
+    connection_pool_iterator = httplite_create_connection_pool_iterator(c_pool);
 
-    upstream_pool_index = c_pool->pool_index;
-    num_upstream_pools = c_pool->upstream_pools->nelts;
-    upstream_pool = &((httplite_upstream_pool_t *)(c_pool->upstream_pools->elts))[upstream_pool_index % num_upstream_pools];
-    num_upstreams = upstream_pool->upstreams->nelts;
-
-    for (int i = 0; i < num_upstreams; i++) {
-        upstream_index = (upstream_pool->upstream_index + i) % num_upstreams;
-        u = &((httplite_upstream_t*)(upstream_pool->upstreams->elts))[upstream_index];
+    while (httplite_has_next_upstream(connection_pool_iterator)) {
+        u = httplite_next_upstream(connection_pool_iterator);
         if (!u->active) {
-            upstream_pool->upstream_index += i;
             return u;
         }
     }
