@@ -9,14 +9,14 @@
 static void httplite_empty_upstream_handler() {}
 
 httplite_upstream_t *httplite_create_upstream(ngx_array_t *arr, char *address, ngx_int_t port, ngx_pool_t *pool) {
-    httplite_upstream_t *upstream;
+    httplite_upstream_t *u;
     struct sockaddr_in *socket_address;
     size_t socket_length;
     ngx_str_t *name;
     
-    upstream = ngx_array_push(arr);
+    u = ngx_array_push(arr);
 
-    if (!upstream) {
+    if (!u) {
         return NULL;
     }
 
@@ -41,25 +41,25 @@ httplite_upstream_t *httplite_create_upstream(ngx_array_t *arr, char *address, n
     name->data = (u_char *) address;
     name->len = strlen(address) - 1;
 
-    upstream->pool = pool;
-    upstream->peer.sockaddr = (struct sockaddr*)socket_address;
-    upstream->peer.socklen = socket_length;
-    upstream->peer.name = name;
-    upstream->peer.get = ngx_event_get_peer;
-    upstream->peer.log = pool->log;
-    upstream->peer.log_error = NGX_ERROR_ERR;
+    u->pool = pool;
+    u->peer.sockaddr = (struct sockaddr*)socket_address;
+    u->peer.socklen = socket_length;
+    u->peer.name = name;
+    u->peer.get = ngx_event_get_peer;
+    u->peer.log = pool->log;
+    u->peer.log_error = NGX_ERROR_ERR;
 
-    upstream->active = 0;
-    upstream->busy = 0;
+    u->active = 0;
+    u->busy = 0;
 
-    return upstream;
+    return u;
 }
 
-ngx_int_t httplite_free_upstream(httplite_upstream_t* upstream) {
-    ngx_pfree(upstream->pool, upstream->peer.name->data);
-    ngx_pfree(upstream->pool, upstream->peer.name);
+ngx_int_t httplite_free_upstream(httplite_upstream_t* u) {
+    ngx_pfree(u->pool, u->peer.name->data);
+    ngx_pfree(u->pool, u->peer.name);
 
-    if (ngx_pfree(upstream->pool, upstream) != NGX_OK) {
+    if (ngx_pfree(u->pool, u) != NGX_OK) {
         fprintf(stderr, "Failed to deallocate httplite upstream\n");
         return NGX_DECLINED;
     }
@@ -85,17 +85,17 @@ void httplite_deactivate_upstream(httplite_upstream_t *u) {
     u->active = 0;
 }
 
-void httplite_refresh_upstream_connection(httplite_upstream_t *upstream, void *upstream_data) {
+void httplite_refresh_upstream_connection(httplite_upstream_t *u, void *upstream_data) {
     // TODO: Add testing logic to check if the connection is already made
-    ngx_int_t result = ngx_event_connect_peer(&upstream->peer);
-    ngx_event_t *wev = upstream->peer.connection->write;
-    ngx_event_t *rev = upstream->peer.connection->read;
+    ngx_int_t result = ngx_event_connect_peer(&u->peer);
+    ngx_event_t *wev = u->peer.connection->write;
+    ngx_event_t *rev = u->peer.connection->read;
 
     if (result == NGX_AGAIN) {
         // if the upstream has a data field, then set the write handler to
         // the proper handler to forward connections
-        upstream->peer.connection->data = upstream_data;
-        if (upstream->request) {
+        u->peer.connection->data = upstream_data;
+        if (u->request) {
             wev->handler = httplite_upstream_write_handler;
             rev->handler = httplite_upstream_read_handler;
         } else {
@@ -107,38 +107,38 @@ void httplite_refresh_upstream_connection(httplite_upstream_t *upstream, void *u
 
     if (result != NGX_OK && result != NGX_AGAIN) {
         fprintf(stderr, "Something went wrong when creating connection.\n");
-        ngx_pfree(upstream->pool, upstream);
+        ngx_pfree(u->pool, u);
     }
 }
 
 void httplite_send_request_to_upstream(httplite_request_list_t *request) {
-    ngx_connection_t *client_connection = request->connection;
-    httplite_upstream_configuration_t *cucf = httplite_get_upstream_conf(client_connection);
-    httplite_upstream_t *upstream = fetch_upstream(cucf->connection_pool);
+    ngx_connection_t *client = request->connection;
+    httplite_upstream_configuration_t *cucf = httplite_get_upstream_conf(client);
+    httplite_upstream_t *u = fetch_upstream(cucf->connection_pool);
     
-    if (upstream == NULL) {
-        upstream = httplite_fetch_inactive_upstream(cucf->connection_pool);
+    if (u == NULL) {
+        u = httplite_fetch_inactive_upstream(cucf->connection_pool);
 
-        if (upstream == NULL)  {
+        if (u == NULL)  {
             printf("All connections are busy\n");
             return;
         }
 
-        ((httplite_event_connection_t*)client_connection->data)->upstream = upstream;
-        upstream->busy = 1;
-        upstream->request = request;
+        ((httplite_event_connection_t*)client->data)->upstream = u;
+        u->busy = 1;
+        u->request = request;
 
-        httplite_refresh_upstream_connection(upstream, client_connection->data);
+        httplite_refresh_upstream_connection(u, client->data);
         return;
     } 
 
-    ((httplite_event_connection_t*)client_connection->data)->upstream = upstream;
-    upstream->busy = 1;
-    upstream->request = request;
+    ((httplite_event_connection_t*)client->data)->upstream = u;
+    u->busy = 1;
+    u->request = request;
 
-    upstream->peer.connection->data = client_connection->data;
-    upstream->peer.connection->write->handler = httplite_upstream_write_handler;
-    upstream->peer.connection->read->handler = httplite_upstream_read_handler;
+    u->peer.connection->data = client->data;
+    u->peer.connection->write->handler = httplite_upstream_write_handler;
+    u->peer.connection->read->handler = httplite_upstream_read_handler;
 }
 
 void httplite_keepalive_read_handler(ngx_event_t *rev) {
@@ -194,7 +194,7 @@ void httplite_upstream_read_handler(ngx_event_t *rev) {
     httplite_event_connection_t *connections;
     ngx_connection_t *client;
     httplite_upstream_t *u;
-    httplite_request_slab_t *response_slab;
+    httplite_request_slab_t *response;
     int n;
 
     if (httplite_check_broken_connection(c) != NGX_OK) {
@@ -213,23 +213,23 @@ void httplite_upstream_read_handler(ngx_event_t *rev) {
         return;
     }
 
-    response_slab = ngx_pcalloc(client->pool, sizeof(httplite_request_slab_t));
-    if (!response_slab) {
+    response = ngx_pcalloc(client->pool, sizeof(httplite_request_slab_t));
+    if (!response) {
         fprintf(stderr, "Unable to initialize response slab in httplite_upstream_read_handler.\n");
         return;
     }
 
-    response_slab->buffer = ngx_pnalloc(client->pool, SLAB_SIZE);
-    if (!response_slab->buffer) {
+    response->buffer = ngx_pnalloc(client->pool, SLAB_SIZE);
+    if (!response->buffer) {
         fprintf(stderr, "Unable to initialize buffer space in httplite_upstream_read_handler.\n");
         return;
     }
 
     // read the content from the upstream and store it on the current connection so as to prevent blocking on the upstream connection
-    n = c->recv(c, response_slab->buffer, SLAB_SIZE);
-    response_slab->size += n;
+    n = c->recv(c, response->buffer, SLAB_SIZE);
+    response->size += n;
 
-    u->response = response_slab;
+    u->response = response;
 
     // wait until client is write ready to send to client
     if (!client->write->ready) {
@@ -238,7 +238,7 @@ void httplite_upstream_read_handler(ngx_event_t *rev) {
         return;
     }
 
-    int rc = client->send(client, response_slab->buffer, response_slab->size);
+    int rc = client->send(client, response->buffer, response->size);
 
     if (rc == NGX_AGAIN) {
         // data was only partially sent, add write event
@@ -254,9 +254,9 @@ void httplite_upstream_read_handler(ngx_event_t *rev) {
     }
 
     // data was fully sent, check if there's more to send
-    if (rc < response_slab->size) {
-        response_slab->buffer += rc;
-        response_slab->size -= rc;
+    if (rc < response->size) {
+        response->buffer += rc;
+        response->size -= rc;
         ngx_handle_write_event(client->write, 0);
         return;
     }
@@ -271,10 +271,10 @@ void httplite_upstream_read_handler(ngx_event_t *rev) {
 }
 
 void httplite_upstream_write_handler(ngx_event_t *wev) {
-    ngx_connection_t     *c;
+    ngx_connection_t        *c;
     httplite_request_list_t *list;
     httplite_request_slab_t *r;
-    httplite_upstream_t *u;
+    httplite_upstream_t     *u;
     int n;
 
     c = wev->data;
@@ -319,8 +319,8 @@ void httplite_upstream_write_handler(ngx_event_t *wev) {
 }
 
 httplite_upstream_t *fetch_upstream(httplite_connection_pool_t *c_pool) {
-    httplite_upstream_pool_t *upstream_pool;
-    httplite_upstream_t *upstream;
+    httplite_upstream_pool_t    *upstream_pool;
+    httplite_upstream_t         *u;
 
     int *upstream_pool_index, *upstream_index;
     ngx_uint_t num_upstream_pools, num_upstreams;
@@ -341,8 +341,8 @@ httplite_upstream_t *fetch_upstream(httplite_connection_pool_t *c_pool) {
             upstream_index = &upstream_pool->upstream_index;
             *upstream_index += i;
 
-            upstream = &((httplite_upstream_t*)(upstream_pool->upstreams->elts))[*upstream_index % num_upstreams];
-            return upstream;
+            u = &((httplite_upstream_t*)(upstream_pool->upstreams->elts))[*upstream_index % num_upstreams];
+            return u;
         }
 
         i++;
@@ -352,8 +352,8 @@ httplite_upstream_t *fetch_upstream(httplite_connection_pool_t *c_pool) {
 }
 
 httplite_upstream_t *httplite_fetch_inactive_upstream(httplite_connection_pool_t *c_pool) {
-    httplite_upstream_pool_t *upstream_pool;
-    httplite_upstream_t *upstream;
+    httplite_upstream_pool_t    *upstream_pool;
+    httplite_upstream_t         *u;
 
     int upstream_pool_index, upstream_index;
     ngx_uint_t num_upstream_pools, num_upstreams;
@@ -365,10 +365,10 @@ httplite_upstream_t *httplite_fetch_inactive_upstream(httplite_connection_pool_t
 
     for (int i = 0; i < num_upstreams; i++) {
         upstream_index = (upstream_pool->upstream_index + i) % num_upstreams;
-        upstream = &((httplite_upstream_t*)(upstream_pool->upstreams->elts))[upstream_index];
-        if (!upstream->active) {
+        u = &((httplite_upstream_t*)(upstream_pool->upstreams->elts))[upstream_index];
+        if (!u->active) {
             upstream_pool->upstream_index += i;
-            return upstream;
+            return u;
         }
     }
 
