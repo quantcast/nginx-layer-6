@@ -3,5 +3,10 @@
   "dockerFile": "Dockerfile",
   "capAdd": ["SYS_PTRACE"],
   "securityOpt": ["seccomp=unconfined"],
-  "postStartCommand": "chmod +x ./scripts/startup && ./scripts/startup"
+  "postStartCommand": "chmod +x ./scripts/startup && ./scripts/startup",
+  "customizations": {
+    "vscode": {
+      "extensions": ["ms-vsliveshare.vsliveshare"]
+    }
+  }
 }

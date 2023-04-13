@@ -3,7 +3,7 @@ FROM ubuntu:latest
 RUN apt-get update && \
     apt-get -y install systemd init apport sudo git mercurial make gdb \
     build-essential libpcre3 libpcre3-dev zlib1g \
-    zlib1g-dev libssl-dev zsh curl
+    zlib1g-dev libssl-dev zsh curl python3
 
 WORKDIR /workspaces
 
@@ -23,6 +23,7 @@ RUN . "$NVM_DIR/nvm.sh" && nvm alias default v${NODE_VERSION}
 ENV PATH="/root/.nvm/versions/node/v${NODE_VERSION}/bin/:${PATH}"
 
 COPY test-server ./test-server
+COPY python-server ./python-server
 
 RUN node --version
 RUN npm --version

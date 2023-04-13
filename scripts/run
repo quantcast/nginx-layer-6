@@ -82,10 +82,9 @@ then
     echo "Running auto/configure"
     if [ $VERBOSE == 1 ]
     then
-
-        auto/configure --prefix="$(pwd)/out" --without-http_rewrite_module --add-module="$MODULE"
+        auto/configure --prefix="$(pwd)/out" --without-http_rewrite_module --add-module="$MODULE" --with-debug
     else
-        auto/configure --prefix="$(pwd)/out" --without-http_rewrite_module --add-module="$MODULE" >> /dev/null
+        auto/configure --prefix="$(pwd)/out" --without-http_rewrite_module --add-module="$MODULE" --with-debug >> /dev/null
     fi
 fi
 

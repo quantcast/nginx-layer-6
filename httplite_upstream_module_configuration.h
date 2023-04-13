@@ -15,6 +15,8 @@
 #define httplite_conf_get_module_upstream_conf(cf, module)                        \
     ((httplite_configuration_context_t *) cf->ctx)->upstream_configuration[module.ctx_index]
 
+#define httplite_get_upstream_conf(c) ((c)->listening->servers)
+
 typedef struct httplite_connection_pool_s {
     ngx_array_t    *upstream_pools;
     ngx_atomic_t    pool_index;
