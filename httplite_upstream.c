@@ -93,7 +93,7 @@ void httplite_keepalive_write_handler(ngx_event_t *wev) {
 
         printf("keep alive time out has been hit. closing connection\n");
         fflush(stdin);
-        
+
         ngx_log_error(NGX_ERROR_ALERT, wev->log, 0, "the request timed out\n");
         return;
     }
@@ -292,7 +292,7 @@ httplite_upstream_t *httplite_fetch_inactive_upstream(httplite_connection_pool_t
     httplite_upstream_pool_t *upstream_pool;
     httplite_upstream_t *upstream;
 
-    ngx_atomic_t upstream_pool_index, upstream_index;
+    int upstream_pool_index, upstream_index;
     ngx_uint_t num_upstream_pools, num_upstreams;
 
     upstream_pool_index = c_pool->pool_index;
@@ -304,7 +304,7 @@ httplite_upstream_t *httplite_fetch_inactive_upstream(httplite_connection_pool_t
         upstream_index = (upstream_pool->upstream_index + i) % num_upstreams;
         upstream = &((httplite_upstream_t*)(upstream_pool->upstreams->elts))[upstream_index];
         if (!upstream->active) {
-            ngx_atomic_fetch_add(&upstream_pool->upstream_index, i); 
+            upstream_pool->upstream_index += i;
             return upstream;
         }
     }
@@ -346,13 +346,15 @@ httplite_upstream_t *fetch_upstream(httplite_connection_pool_t *c_pool) {
     httplite_upstream_pool_t *upstream_pool;
     httplite_upstream_t *upstream;
 
-    ngx_atomic_t upstream_pool_index, upstream_index;
+    int *upstream_pool_index, *upstream_index;
     ngx_uint_t num_upstream_pools, num_upstreams;
 
     /* Get the upstream pool currently pointed to */
-    upstream_pool_index = ngx_atomic_fetch_add(&c_pool->pool_index, 1);
+    upstream_pool_index = &c_pool->pool_index;
+    *upstream_pool_index++;
+
     num_upstream_pools = c_pool->upstream_pools->nelts;
-    upstream_pool = &((httplite_upstream_pool_t *)(c_pool->upstream_pools->elts))[upstream_pool_index % num_upstream_pools];
+    upstream_pool = &((httplite_upstream_pool_t *)(c_pool->upstream_pools->elts))[*upstream_pool_index % num_upstream_pools];
 
     num_upstreams = upstream_pool->upstreams->nelts;
     int i = 1; 
@@ -360,10 +362,13 @@ httplite_upstream_t *fetch_upstream(httplite_connection_pool_t *c_pool) {
         int upstream_index_to_check = (upstream_pool->upstream_index + i) % num_upstreams;
         httplite_upstream_t *upstream_to_check = &((httplite_upstream_t*)upstream_pool->upstreams->elts)[upstream_index_to_check];
         if (upstream_to_check->active && !upstream_to_check->busy) {
-            upstream_index = ngx_atomic_fetch_add(&upstream_pool->upstream_index, i); 
-            upstream = &((httplite_upstream_t*)(upstream_pool->upstreams->elts))[upstream_index % num_upstreams];
+            upstream_index = &upstream_pool->upstream_index;
+            *upstream_index += i;
+
+            upstream = &((httplite_upstream_t*)(upstream_pool->upstreams->elts))[*upstream_index % num_upstreams];
             return upstream;
         }
+
         i++;
     }
 

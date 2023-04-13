@@ -19,12 +19,12 @@
 
 typedef struct httplite_connection_pool_s {
     ngx_array_t    *upstream_pools;
-    ngx_atomic_t    pool_index;
+    int             pool_index;
 } httplite_connection_pool_t;
 
 typedef struct httplite_upstream_pool_s {
     ngx_array_t    *upstreams;
-    ngx_atomic_t    upstream_index;
+    int             upstream_index;
 } httplite_upstream_pool_t;
 
 typedef struct {
