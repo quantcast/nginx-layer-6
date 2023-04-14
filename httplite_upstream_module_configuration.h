@@ -13,9 +13,19 @@
 #define httplite_conf_get_module_upstream_conf(cf, module)                        \
     ((httplite_configuration_context_t *) cf->ctx)->upstream_configuration[module.ctx_index]
 
+typedef struct httplite_connection_pool_s {
+    ngx_array_t    *upstream_pools;
+    ngx_atomic_t    pool_index;
+} httplite_connection_pool_t;
+
+typedef struct httplite_upstream_pool_s {
+    ngx_array_t    *upstreams;
+    ngx_atomic_t    upstream_index;
+} httplite_upstream_pool_t;
+
 typedef struct {
     httplite_configuration_context_t   *ctx;
-    ngx_array_t                         upstreams;
+    httplite_connection_pool_t         *connection_pool;
     load_balance_method_t               balancing_algorithm;
     ngx_pool_t                         *pool;
 } httplite_upstream_configuration_t;

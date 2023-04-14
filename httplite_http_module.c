@@ -45,7 +45,7 @@ ngx_command_t httplite_http_commands[] = {
     },
     {
         ngx_string("server"),
-        HTTPLITE_UPSTREAM_CONFIGURATION | NGX_CONF_TAKE1,
+        HTTPLITE_UPSTREAM_CONFIGURATION | NGX_CONF_1MORE,
         httplite_parse_upstream_server,
         HTTPLITE_UPSTREAM_CONFIGURATION_OFFSET,
         0,
