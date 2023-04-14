@@ -17,6 +17,8 @@
 */
 httplite_request_list_t *httplite_init_list(ngx_connection_t *connection);
 
+void httplite_free_list(httplite_request_list_t *list);
+
 /**
  * Adds a node to the given list given the httplite_request_list
  * 

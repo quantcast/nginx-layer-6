@@ -9,6 +9,8 @@
 
 #include "httplite_upstream_module_configuration.h"
 
+#define MAX_RETRY_TIME 10000
+
 typedef struct httplite_request_slab_s {
     u_char *buffer;                         /* A pointer to the memory holding the request string */
     struct httplite_request_slab_s *next;   /* A pointer to the next slab in the linked list */
@@ -27,14 +29,16 @@ typedef struct httplite_upstream_s {
     ngx_pool_t                 *pool;
     httplite_request_list_t    *request;
     httplite_request_slab_t    *response;
+    ngx_event_t                *timer;
+    int                         keep_alive;
     int                         active  : 1;
     int                         busy    : 1;
 } httplite_upstream_t;
 
 typedef struct {
-    ngx_connection_t    *client_connection;
+    ngx_connection_t    *client;
     httplite_upstream_t *upstream;
-} httplite_event_connection_t;
+} httplite_event_data_t;
 
 typedef struct {
     httplite_upstream_pool_t* upstream_pool;
@@ -56,6 +60,9 @@ void httplite_deactivate_upstream(httplite_upstream_t *u);
 
 void httplite_refresh_upstream_connection(httplite_upstream_t *upstream, void *upstream_data);
 void httplite_send_request_to_upstream(httplite_request_list_t *request);
+
+void httplite_send_client_error(ngx_event_t *wev);
+void httplite_find_upstream_timeout_handler(ngx_event_t *ev);
 
 void httplite_keepalive_read_handler(ngx_event_t *rev);
 void httplite_keepalive_write_handler(ngx_event_t *wev);

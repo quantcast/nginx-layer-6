@@ -61,6 +61,18 @@ httplite_request_slab_t *httplite_add_slab(httplite_request_list_t *list) {
     return new_slab;
 }
 
+void httplite_free_list(httplite_request_list_t *list) {
+    httplite_request_slab_t *slab;
+    slab = list->head;
+    while (slab) {
+        void *free = slab;
+        slab = slab->next;
+        ngx_pfree(list->connection->pool, free);
+    }
+
+    ngx_pfree(list->connection->pool, list);
+}
+
 void httplite_close_connection(ngx_connection_t *c)
 {
     ngx_pool_t  *pool;
@@ -186,14 +198,14 @@ void httplite_request_handler(ngx_event_t *rev) {
         n += m;
     }
 
-    httplite_event_connection_t *connections = ngx_pcalloc(c->pool, sizeof(httplite_event_connection_t));
-    if (!connections) {
-        fprintf(stderr, "Unable to instantiate httplite_event_connection_t pointer.\n");
+    httplite_event_data_t *ev_data = ngx_pcalloc(c->pool, sizeof(httplite_event_data_t));
+    if (!ev_data) {
+        fprintf(stderr, "Unable to instantiate httplite_event_data_t pointer.\n");
         return;
     }
-    connections->client_connection = c;
+    ev_data->client = c;
 
-    c->data = connections;
+    c->data = ev_data;
 
     httplite_send_request_to_upstream(list);
 }

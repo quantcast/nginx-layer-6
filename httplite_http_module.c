@@ -54,7 +54,7 @@ ngx_command_t httplite_http_commands[] = {
     },
 
     {
-        ngx_string("keep-alive"),
+        ngx_string("keep_alive"),
         HTTPLITE_UPSTREAM_CONFIGURATION | NGX_CONF_1MORE,
         ngx_conf_set_num_slot,
         HTTPLITE_UPSTREAM_CONFIGURATION_OFFSET,
