@@ -1,6 +1,5 @@
 #include <nginx.h>
 #include <ngx_core.h>
-#include "httplite_server.h"
 
 #include "httplite_module_configuration.h"
 
@@ -11,9 +10,9 @@ char* httplite_block(
     ngx_command_t *command, 
     void *base_configuration
 ) {
-    char                                *rv;
-    ngx_uint_t                           m, module_index;
-    ngx_conf_t                           pcf;
+    char                                *parse_result;
+    ngx_uint_t                           module_index;
+    ngx_conf_t                           previous_configuration;
     httplite_module_t                *module;
     httplite_configuration_context_t *context;
 
@@ -28,7 +27,7 @@ char* httplite_block(
 
     /* count all modules and set up their indices */
     httplite_max_module_count = 0;
-    for (m = 0; ngx_modules[m]; m++) {
+    for (ngx_uint_t m = 0; ngx_modules[m]; m++) {
 
         if (ngx_modules[m]->type != HTTPLITE_MODULE) {
             continue;
@@ -38,14 +37,17 @@ char* httplite_block(
     }
 
     /* the httplite module main context */
-    context->main_configuration = ngx_pcalloc(configuration->pool, httplite_max_module_count * sizeof(void*));
+    ngx_uint_t max_module_size = httplite_max_module_count * sizeof(void*);
+    context->main_configuration = ngx_pcalloc(configuration->pool, max_module_size);
+    context->server_configuration = ngx_pcalloc(configuration->pool, max_module_size);
+    context->upstream_configuration = ngx_pcalloc(configuration->pool, max_module_size);
 
-    if (context->main_configuration == NULL) {
+    if (context->main_configuration == NULL || context->server_configuration == NULL || context->upstream_configuration == NULL) {
         return NGX_CONF_ERROR;
     }
 
     /* create the main configuration */
-    for (m = 0; ngx_modules[m]; m++) {
+    for (ngx_uint_t m = 0; ngx_modules[m]; m++) {
 
         if (ngx_modules[m]->type != HTTPLITE_MODULE) {
             continue;
@@ -61,23 +63,36 @@ char* httplite_block(
                 return NGX_CONF_ERROR;
             }
         }
+        if (module->create_upstream_configuration) {
+            context->upstream_configuration[module_index] = module->create_upstream_configuration(configuration);
 
+            if (context->upstream_configuration[module_index] == NULL) {
+                return NGX_CONF_ERROR;
+            }
+        }
+        if (module->create_server_configuration) {
+            context->server_configuration[module_index] = module->create_server_configuration(configuration);
+
+            if (context->server_configuration[module_index] == NULL) {
+                return NGX_CONF_ERROR;
+            }
+        }
     }
 
-    /* parse inside the myhttp{} block */
-    pcf = *configuration;
+    /* parse inside the httplite{} block */
+    previous_configuration = *configuration;
     configuration->ctx = context;
 
     configuration->module_type = HTTPLITE_MODULE;
     configuration->cmd_type = HTTPLITE_MAIN_CONFIGURATION;
-    rv = ngx_conf_parse(configuration, NULL);
+    parse_result = ngx_conf_parse(configuration, NULL);
 
-    if (rv != NGX_CONF_OK) {
-        *configuration = pcf;
-        return rv;
+    if (parse_result != NGX_CONF_OK) {
+        *configuration = previous_configuration;
+        return parse_result;
     }
 
-    for (m = 0; ngx_modules[m]; m++) {
+    for (ngx_uint_t m = 0; ngx_modules[m]; m++) {
 
         if (ngx_modules[m]->type != HTTPLITE_MODULE) {
             continue;
@@ -90,22 +105,35 @@ char* httplite_block(
         configuration->ctx = context;
 
         if (module->init_main_configuration) {
-            rv = module->init_main_configuration(configuration, context->main_configuration[module_index]);
+            parse_result = module->init_main_configuration(configuration, context->main_configuration[module_index]);
 
-            if (rv != NGX_CONF_OK) {
-                *configuration = pcf;
-                return rv;
+            if (parse_result != NGX_CONF_OK) {
+                *configuration = previous_configuration;
+                return parse_result;
             }
         }
     }
 
-    *configuration = pcf;
+    for (ngx_uint_t m = 0; ngx_modules[m]; m++) {
 
-    const int PORT = 8080;
-    if (httplite_http_server_init_listening(configuration, PORT) != NGX_OK) {
-        printf("Failed to init connection\n");
-        return NGX_CONF_ERROR;
+        if (ngx_modules[m]->type != HTTPLITE_MODULE) {
+            continue;
+        }
+
+        module = ngx_modules[m]->ctx;
+        module_index = ngx_modules[m]->ctx_index;
+
+        /* init tcp{} main_configurationss */
+        configuration->ctx = context;
+
+        if (module->postconfiguration) {
+            if (module->postconfiguration(configuration) != NGX_OK) {
+                return NGX_CONF_ERROR;
+            }
+        }
     }
+
+    *configuration = previous_configuration;
 
     return NGX_CONF_OK;
 }

@@ -5,13 +5,18 @@
 #include <ngx_core.h>
 #include <ngx_event.h>
 
-#define SLAB_SIZE 1500      /* MTU size */
+#include "httplite_upstream.h"
+
+#define SLAB_SIZE 1500                              /* MTU size */
+#define DEFAULT_SERVER_TIMEOUT          (60*1000)   /* Default timeout for server to be read ready */
+#define DEFAULT_CLIENT_WRITE_TIMEOUT    (60*1000)   /* Default timeout for server to be read ready */
 
 enum HTTP_method{GET, POST};
 
 typedef struct httplite_request_slab_s {
     u_char *buffer;                         /* A pointer to the memory holding the request string */
     struct httplite_request_slab_s *next;   /* A pointer to the next slab in the linked list */
+    httplite_upstream_t *upstream;          /* An (optional) pointer to the upstream to be sent to */
     size_t size;                            /* The number of bytes that have been filled in the slab */
 } httplite_request_slab_t;
 
@@ -22,15 +27,12 @@ typedef struct httplite_request_list_s {
    struct httplite_request_list_s *next;                 /* Points to next request in pipeline queue */
 } httplite_request_list_t;
 
-typedef struct httplite_connection_s {
-    ngx_connection_t *ngx_connection;
-    ngx_queue_t request_q;                  /* maintains order of pipelined requests */
-} httplite_connection_t;
-
-// typedef struct httplite_request_queue_s {
-//     httplite_request_list_t *head;
-// } httplite_request_queue_t;
-
+typedef struct {
+    ngx_connection_t *client_connection;
+    ngx_connection_t *upstream_connection;
+    httplite_request_slab_t *request;
+    httplite_request_slab_t *response;
+} httplite_event_connection_t;
 
 /**
  * @returns new httplite linked list of slabs, where each slab contains a
@@ -56,7 +58,9 @@ void copy_to_list(httplite_request_list_t *write_list, size_t size, httplite_req
 httplite_request_slab_t *httplite_add_slab(httplite_request_list_t *list);
 
 void httplite_request_handler(ngx_event_t *rev);
-void ngx_httplite_close_connection(ngx_connection_t *c);
+void httplite_close_connection(ngx_connection_t *c);
+
+void httplite_send_request_to_upstream(httplite_upstream_t *upstream, httplite_request_slab_t *request);
 
 /**
  * Given a slab, looks at the buffer (assumed to contain all the headers of a request)
@@ -72,20 +76,8 @@ ssize_t find_request_length(httplite_request_slab_t *slab);
 */
 size_t recv_wrapper(ngx_connection_t *c, httplite_request_slab_t *request, ngx_event_t *rev);
 
-/**
- * Determines if given string is an HTTP method name.
- * 
- * @returns 1 if str is an HTTP method, 0 if str is not an HTTP method
-*/
-size_t check_http_method(u_char *str);
 httplite_request_list_t *split_request (httplite_request_list_t *read_list, httplite_request_list_t *write_list,
                                         ngx_connection_t *c);
-/**
- * Used to free a list that is not needed anymore by using ngx_free() instead of ngx_pfree() which is used to
- * free large allocations
- * @cite: https://www.nginx.com/resources/wiki/extending/api/alloc/
-*/
-void httplite_free_list (httplite_request_list_t *list);
 
 /**
  * Used to free a slab that is not needed anymore by using ngx_free() instead of ngx_pfree() which is used to
@@ -95,5 +87,6 @@ void httplite_free_list (httplite_request_list_t *list);
 void httplite_free_slab (httplite_request_slab_t *slab);
 void printRequests (httplite_request_list_t *requests);
 void printRequest(httplite_request_list_t *request);
+void httplite_client_handle_wakeup(ngx_event_t *event);
 
 #endif
