@@ -104,23 +104,23 @@ httplite_request_slab_t *httplite_add_slab(httplite_request_list_t *list) {
     return new_slab;
 }
 
-void httplite_free_request_slab(httplite_request_slab_t *slab, ngx_pool_t *pool) {
-    ngx_pfree(pool, slab->start);
-    ngx_pfree(pool, slab);
-}
+httplite_request_slab_t *httplite_init_slab(ngx_connection_t *c) {
+    httplite_request_slab_t *slab = ngx_pcalloc(c->pool, sizeof(httplite_request_slab_t));
 
-void httplite_free_request_list(httplite_request_list_t *list) {
-    httplite_request_slab_t *curr = list->head;
-    while (curr) {
-        httplite_request_slab_t *temp = curr;
-        curr = curr->next;
-        httplite_free_request_slab(temp, list->connection->pool);
+    if (!slab) {
+        ngx_log_error(NGX_ERROR_ALERT, c->log, 0, "unable to create new slab on connection's memory pool.");
+        return NULL;
     }
-    ngx_pfree(list->connection->pool, list);
-}
 
-void httplite_remove_head(httplite_request_list_t *list) {
-    httplite_free_request_list(list);
+    slab->size = 0;
+    slab->buffer = ngx_pnalloc(c->pool, SLAB_SIZE);
+
+    if (!slab->buffer) {
+        ngx_log_error(NGX_ERROR_ALERT,c->log, 0, "unable to the string buffer on connection's memory pool.");
+        return NULL;
+    }
+
+    return slab;
 }
 
 void httplite_close_connection(ngx_connection_t *c)
@@ -229,19 +229,17 @@ void httplite_request_handler(ngx_event_t *rev) {
 /* given a list of slabs, break it up into a list of lists, 
 * each one containing a single request 
 */
-httplite_request_list_t *split_request (httplite_request_list_t *read_list, httplite_request_list_t *write_list, 
+httplite_request_list_t *split_request (httplite_request_slab_t *read_slab, httplite_request_list_t *write_list, 
                                         ngx_connection_t *c) {
     u_char *curr, *start_ptr, *temp;
-    httplite_request_slab_t *read_slab;
-    size_t l, iter_no, header_size;
+    size_t l, first_iter, header_size;
     ssize_t body_size;
     httplite_request_list_t *head;
     enum HTTP_method method; 
     head = write_list; /* keeps track of the head of the list of lists to return at the end */
 
-    read_slab = read_list->head;
     curr = read_slab->buffer;
-    iter_no = 1;
+    first_iter = 1;
 
     while(read_slab != NULL && curr <= read_slab->buffer + read_slab->size) { /* each iteration will find one request */
 
@@ -257,13 +255,13 @@ httplite_request_list_t *split_request (httplite_request_list_t *read_list, http
         }
 
         /* make a new list to hold the next request, except on the first iteration */
-        if (iter_no != 1) {
+        if (first_iter != 1) {
             httplite_request_list_t *temp = httplite_init_list(write_list->connection);
             httplite_add_slab(temp);
             write_list->next = temp;
             write_list = write_list->next;
         }
-        ++iter_no;
+        first_iter = 0;
 
         body_size = 0;
         header_size = 0;
@@ -280,83 +278,75 @@ httplite_request_list_t *split_request (httplite_request_list_t *read_list, http
         *  will set curr to first char of the separator */ 
         curr = (u_char*) ngx_strstr(curr, HEADER_BODY_SEPARATOR);
 
-        if (curr == NULL) {
-            /* in this case (separator not found), headers continue onto next slab*/
+        // if (curr == NULL) {
+        //     /* in this case (separator not found), headers continue onto next slab*/
 
-            /* confirm that the current slab is full */
-            /*if (read_slab->size != SLAB_SIZE) {
-                ngx_log_error(NGX_LOG_ALERT, c->log, 0, "current slab underfull ");
-                return NULL;
-            }*/
+        //     /* confirm that the current slab is full */
+        //     /*if (read_slab->size != SLAB_SIZE) {
+        //         ngx_log_error(NGX_LOG_ALERT, c->log, 0, "current slab underfull ");
+        //         return NULL;
+        //     }*/
 
-            /* save these pointers before copying to use later when checking if separator is split */
-            u_char *end = read_slab->buffer + read_slab->size;
-            u_char *start = read_slab->next->buffer;
+        //     /* save these pointers before copying to use later when checking if separator is split */
+        //     u_char *end = read_slab->buffer + read_slab->size;
+        //     u_char *start = read_slab->next->buffer;
 
-            /* update header_size */
-            header_size = read_slab->buffer + read_slab->size - start_ptr;
+        //     /* update header_size */
+        //     header_size = read_slab->buffer + read_slab->size - start_ptr;
 
-            /* copy what we currently have before moving to the next slab */
-            copy_to_list(write_list, header_size, &read_slab, &start_ptr);
+        //     /* copy what we currently have before moving to the next slab */
+        //     copy_to_list(write_list, header_size, &read_slab, &start_ptr);
 
-            /* check if separator is split across slabs */
-            if (read_slab->next == NULL) {
-                ngx_log_error(NGX_LOG_ALERT, c->log, 0, "cannot find next slab");
-                return NULL;
-            }
+        //     /* check if separator is split across slabs */
+        //     if (read_slab->next == NULL) {
+        //         ngx_log_error(NGX_LOG_ALERT, c->log, 0, "cannot find next slab");
+        //         return NULL;
+        //     }
 
-            /* check if separator is split across slabs */
-            if (*(end - 3) == HEADER_BODY_SEPARATOR[0] &&
-                *(end - 2) == HEADER_BODY_SEPARATOR[1] &&
-                *(end - 1) == HEADER_BODY_SEPARATOR[2] &&
-                *(start)   == HEADER_BODY_SEPARATOR[3]) {
-                printf("\n\n--------split 1--------\n\n");
-                fflush(stdout);
-                copy_to_list(write_list, 1, &read_slab, &start_ptr);
-            } else if (*(end - 2) == HEADER_BODY_SEPARATOR[0] &&
-                       *(end - 1) == HEADER_BODY_SEPARATOR[1] &&
-                       *(start) == HEADER_BODY_SEPARATOR[2] &&
-                       *(start + 1)   == HEADER_BODY_SEPARATOR[3]) {
-                printf("\n\n--------split 2--------\n\n");
-                fflush(stdout);
-                copy_to_list(write_list, 2, &read_slab, &start_ptr);
-            } else if (*(end - 1) == HEADER_BODY_SEPARATOR[0] &&
-                       *(start) == HEADER_BODY_SEPARATOR[1] &&
-                       *(start + 1) == HEADER_BODY_SEPARATOR[2] &&
-                       *(start + 2)   == HEADER_BODY_SEPARATOR[3]) {
-                printf("\n\n--------split 3--------\n\n");
-                fflush(stdout);
-                copy_to_list(write_list, 3, &read_slab, &start_ptr);
-            }
-            // TODO: if these happen, the following strstr search should not happen
+        //     /* check if separator is split across slabs */
+        //     if (*(end - 3) == HEADER_BODY_SEPARATOR[0] &&
+        //         *(end - 2) == HEADER_BODY_SEPARATOR[1] &&
+        //         *(end - 1) == HEADER_BODY_SEPARATOR[2] &&
+        //         *(start)   == HEADER_BODY_SEPARATOR[3]) {
+        //         printf("\n\n--------split 1--------\n\n");
+        //         fflush(stdout);
+        //         copy_to_list(write_list, 1, &read_slab, &start_ptr);
+        //     } else if (*(end - 2) == HEADER_BODY_SEPARATOR[0] &&
+        //                *(end - 1) == HEADER_BODY_SEPARATOR[1] &&
+        //                *(start) == HEADER_BODY_SEPARATOR[2] &&
+        //                *(start + 1)   == HEADER_BODY_SEPARATOR[3]) {
+        //         printf("\n\n--------split 2--------\n\n");
+        //         fflush(stdout);
+        //         copy_to_list(write_list, 2, &read_slab, &start_ptr);
+        //     } else if (*(end - 1) == HEADER_BODY_SEPARATOR[0] &&
+        //                *(start) == HEADER_BODY_SEPARATOR[1] &&
+        //                *(start + 1) == HEADER_BODY_SEPARATOR[2] &&
+        //                *(start + 2)   == HEADER_BODY_SEPARATOR[3]) {
+        //         printf("\n\n--------split 3--------\n\n");
+        //         fflush(stdout);
+        //         copy_to_list(write_list, 3, &read_slab, &start_ptr);
+        //     }
+        //     // TODO: if these happen, the following strstr search should not happen
 
-            /* move to next slab */
-            read_slab = read_slab->next;
-            start_ptr = read_slab->buffer;
+        //     /* move to next slab */
+        //     read_slab = read_slab->next;
+        //     start_ptr = read_slab->buffer;
 
-            /* for now assuming that the end of the headers is on the next slab */
-            curr = (u_char*) ngx_strstr(start_ptr, HEADER_BODY_SEPARATOR);
+        //     /* for now assuming that the end of the headers is on the next slab */
+        //     curr = (u_char*) ngx_strstr(start_ptr, HEADER_BODY_SEPARATOR);
 
-            if (curr == NULL) {
-                ngx_log_error(NGX_LOG_ALERT, c->log, 0, "header-body separator not found");
-                // TODO: close connection?
-                return NULL;
-            } 
+        //     /* copy up to end of separator */
+        //     copy_to_list(write_list, header_size, &read_slab, &start_ptr);
+        // }
 
-            curr += HEADER_BODY_SEPARATOR_SIZE;
-            header_size += curr - start_ptr;
-            
-            /* copy up to separator */
-            copy_to_list(write_list, curr - start_ptr, &read_slab, &start_ptr);
-        } else {
-            /* headers are all on the same slab */
-            curr += HEADER_BODY_SEPARATOR_SIZE;
-            header_size += curr - start_ptr;
+        /* headers are all on the same slab */
+        curr += HEADER_BODY_SEPARATOR_SIZE;
+        header_size += curr - start_ptr;
 
-            /* copy up to end of separator */
-            copy_to_list(write_list, header_size, &read_slab, &start_ptr);
-        }
+        /* copy up to end of separator */
+        copy_to_list(write_list, header_size, &read_slab, &start_ptr);
 
+        /* write_list slab containing the headers */
         httplite_request_slab_t *header_slab = write_list->head;
 
         if (str3_cmp(header_slab->buffer, 'G', 'E', 'T')) {

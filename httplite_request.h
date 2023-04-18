@@ -63,9 +63,7 @@ void copy_to_list(httplite_request_list_t *write_list, size_t size, httplite_req
 */
 httplite_request_slab_t *httplite_add_slab(httplite_request_list_t *list);
 
-void httplite_free_request_slab(httplite_request_slab_t *slab, ngx_pool_t *pool);
-void httplite_free_request_list(httplite_request_list_t *list);
-void httplite_remove_head(httplite_request_list_t *list);
+httplite_request_slab_t *httplite_init_slab(ngx_connection_t *c);
 
 void httplite_request_handler(ngx_event_t *rev);
 void httplite_close_connection(ngx_connection_t *c);
@@ -86,7 +84,7 @@ ssize_t find_request_length(httplite_request_slab_t *slab);
 */
 size_t recv_wrapper(ngx_connection_t *c, httplite_request_slab_t *request, ngx_event_t *rev);
 
-httplite_request_list_t *split_request (httplite_request_list_t *read_list, httplite_request_list_t *write_list,
+httplite_request_list_t *split_request (httplite_request_slab_t *read_slab, httplite_request_list_t *write_list,
                                         ngx_connection_t *c);
 
 /**

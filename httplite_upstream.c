@@ -85,7 +85,7 @@ void httplite_handle_send_request_to_upstream(ngx_event_t *event) {
     c = u->peer.connection;
 
     c->send(c, r->buffer, r->size);
-
+    
     // after sending the message, prevent more of the same messages from sending
     c->write->handler = httplite_empty_upstream_handler;
 }
