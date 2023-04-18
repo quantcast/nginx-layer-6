@@ -91,6 +91,8 @@ void httplite_close_connection(ngx_connection_t *c)
     }
 }
 
+void httplite_empty_handler() {}
+
 /* Assumes incoming slab is empty (writes to buffer pointer, overwriting anything there) */
 size_t recv_wrapper(ngx_connection_t *c, httplite_request_list_t *list, ngx_event_t *rev) {
     int n;

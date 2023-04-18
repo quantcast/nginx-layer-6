@@ -7,26 +7,26 @@
 #include "httplite_module_configuration.h"
 #include "httplite_upstream_module_configuration.h"
 
-ngx_int_t httplite_http_block_initialization(ngx_conf_t *configuration) {
-    httplite_server_conf_t *cscf = httplite_conf_get_module_server_conf(configuration, httplite_http_module);
-    httplite_upstream_configuration_t *cucf = httplite_conf_get_module_upstream_conf(configuration, httplite_http_module);
+ngx_int_t httplite_http_block_initialization(ngx_conf_t *cf) {
+    httplite_server_conf_t *cscf = httplite_conf_get_module_server_conf(cf, httplite_http_module);
+    httplite_upstream_configuration_t *cucf = httplite_conf_get_module_upstream_conf(cf, httplite_http_module);
 
     if (cucf->keep_alive == NGX_CONF_UNSET) {
         cucf->keep_alive = DEFAULT_KEEP_ALIVE;
     }
 
     // associating configuration with module
-    if (httplite_server_init_listening(configuration, cscf->port) != NGX_OK) {
+    if (httplite_server_init_listening(cf, cscf->port) != NGX_OK) {
         fprintf(stderr, "Failed to init connection\n");
         return NGX_ERROR;
     }
     return NGX_OK;
 }
 
-void* httplite_http_block_create_main_configuration(ngx_conf_t* configuration) {
+void* httplite_http_block_create_main_configuration(ngx_conf_t* cf) {
     httplite_main_configuration_t* httplite_main_configuration;
     httplite_main_configuration = ngx_pcalloc(
-        configuration->pool, sizeof(httplite_main_configuration_t)
+        cf->pool, sizeof(httplite_main_configuration_t)
     );
     
     if (httplite_main_configuration == NULL) {
@@ -39,10 +39,10 @@ void* httplite_http_block_create_main_configuration(ngx_conf_t* configuration) {
 char *
 httplite_core_server(ngx_conf_t *cf, ngx_command_t *cmd, void *dummy)
 {
-    char                        *rv;
-    ngx_conf_t                   pcf;
-    httplite_configuration_context_t         *ctx;
-    httplite_server_conf_t    *cscf;
+    char                                    *rv;
+    ngx_conf_t                               pcf;
+    httplite_configuration_context_t        *ctx;
+    httplite_server_conf_t                  *cscf;
 
     /* the server configuration context */
 

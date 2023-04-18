@@ -52,7 +52,7 @@ typedef struct {
     ngx_array_t* upstream_pool_iterators;
 } httplite_connection_pool_iterator_t;
 
-httplite_upstream_t* httplite_create_upstream(ngx_array_t *arr, char *address, ngx_int_t port, ngx_pool_t *pool);
+httplite_upstream_t* httplite_create_upstream(ngx_pool_t *pool, ngx_array_t *arr, char *address, ngx_int_t port);
 
 ngx_int_t httplite_free_upstream(httplite_upstream_t* upstream);
 int httplite_check_broken_connection(ngx_connection_t *c);

@@ -10,7 +10,7 @@
 
 static void httplite_empty_handler() {}
 
-httplite_upstream_t *httplite_create_upstream(ngx_array_t *arr, char *address, ngx_int_t port, ngx_pool_t *pool) {
+httplite_upstream_t *httplite_create_upstream(ngx_pool_t *pool, ngx_array_t *arr, char *address, ngx_int_t port) {
     httplite_upstream_t *u;
     struct sockaddr_in *socket_address;
     size_t socket_length;
@@ -109,8 +109,10 @@ void httplite_refresh_upstream_connection(httplite_upstream_t *u, void *data) {
         rev->handler = httplite_keepalive_read_handler;
         wev->handler = httplite_keepalive_write_handler;
 
-        rev->handler = httplite_upstream_read_handler;
-        wev->handler = httplite_upstream_write_handler;
+        if (u->request) {
+            rev->handler = httplite_upstream_read_handler;
+            wev->handler = httplite_upstream_write_handler;
+        }
 
         ngx_add_timer(wev, u->keep_alive);
     }
@@ -401,6 +403,12 @@ void httplite_upstream_write_handler(ngx_event_t *wev) {
 
     u = ((httplite_event_data_t*) c->data)->upstream;
 
+    if (!u->active) {
+        ngx_log_error(NGX_LOG_ERR, wev->log, 0, "trying to access inactive usptream %s!", u->peer.name->data);
+        httplite_close_connection(c);
+        return;
+    }
+
     if (wev->timedout) {
         printf("timed out!\n");
         httplite_close_connection(c);
@@ -417,6 +425,7 @@ void httplite_upstream_write_handler(ngx_event_t *wev) {
     }
 
     list = u->request;
+
     r = list->curr;
 
     n = c->send(c, r->buffer, r->size);
