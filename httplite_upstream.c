@@ -92,11 +92,18 @@ int httplite_check_broken_connection(ngx_connection_t *c) {
 void httplite_deactivate_upstream(httplite_upstream_t *u) {
     u->active = 0;
     u->busy = 0;
+
+    if (u->request) {
+        ngx_pfree(u->request->connection->pool, u->request);
+        u->request = NULL;
+    }
+
     httplite_close_connection(u->peer.connection);
 }
 
 void httplite_refresh_upstream_connection(httplite_upstream_t *u, void *data) {
     // TODO: Add testing logic to check if the connection is already made
+    printf("u active? %d\n", u->active);
     ngx_int_t result = ngx_event_connect_peer(&u->peer);
     ngx_event_t *wev = u->peer.connection->write;
     ngx_event_t *rev = u->peer.connection->read;
@@ -132,22 +139,23 @@ void httplite_send_request_to_upstream(httplite_request_list_t *request) {
         u = httplite_fetch_inactive_upstream(cucf->connection_pool);
 
         if (u == NULL)  {
-            printf("All connections are busy\n");
+            printf("All connections are busy. Please try again later.\n");
             return;
         }
 
         ngx_event_t *timer = ngx_pcalloc(u->pool, sizeof(ngx_event_t));
         if (!timer) {
-            ngx_log_debug0(NGX_LOG_WARN, u->peer.log, 0, "the request timed out");
+            ngx_log_debug0(NGX_LOG_WARN, u->peer.log, 0, "unable to make timer");
             return;
         }
 
         timer->data = client->data;
         timer->handler = httplite_find_upstream_timeout_handler;
         timer->log = u->peer.log;
-        ngx_add_timer(timer, 1000);
+        ngx_add_timer(timer, MAX_RETRY_TIME);
 
         ((httplite_event_data_t*)client->data)->upstream = u;
+        u->timer = timer;
         u->busy = 1;
         u->request = request;
         u->keep_alive = cucf->keep_alive;
@@ -167,13 +175,18 @@ void httplite_send_request_to_upstream(httplite_request_list_t *request) {
         u->timer = NULL;
     }
 
-    u->peer.connection->data = client->data;
-    u->peer.connection->write->handler = httplite_upstream_write_handler;
-    u->peer.connection->read->handler = httplite_upstream_read_handler;
+    ngx_connection_t *peer_c = u->peer.connection;
+
+    peer_c->data = client->data;
+    if (peer_c->write->ready) {
+        httplite_upstream_write_handler(peer_c->write);
+    } else {
+        peer_c->write->handler = httplite_upstream_write_handler;
+    }
+    peer_c->read->handler = httplite_upstream_read_handler;
 }
 
 void httplite_send_client_error(ngx_event_t *wev) {
-    printf("here!\n");
     ngx_connection_t *client;
     char *message;
     int n;
@@ -202,6 +215,7 @@ void httplite_send_client_error(ngx_event_t *wev) {
 }
 
 void httplite_find_upstream_timeout_handler(ngx_event_t *ev) {
+    printf("herezo!\n");
     httplite_event_data_t *ev_data = ev->data;
     httplite_upstream_t *u = ev_data->upstream;
     ngx_connection_t *peer_c = u->peer.connection;
@@ -275,15 +289,13 @@ void httplite_keepalive_write_handler(ngx_event_t *wev) {
     u = ev_data->upstream;
 
     if (wev->timedout) {
-        httplite_deactivate_upstream(u);
-        httplite_close_connection(c);
-
         printf("keep alive time out has been hit. closing connection\n");
         fflush(stdin);
 
-        ngx_log_error(NGX_ERROR_ALERT, wev->log, 0, "the request timed out\n");
+        httplite_deactivate_upstream(u);
+        httplite_close_connection(c);
 
-        httplite_refresh_upstream_connection(u, u->peer.connection->data);
+        ngx_log_error(NGX_ERROR_ALERT, wev->log, 0, "the request timed out\n");
         return;
     }
 
@@ -315,12 +327,12 @@ void httplite_upstream_read_handler(ngx_event_t *rev) {
     client = ev_data->client;
     u = ev_data->upstream;
 
-    if (rev->timedout) {
-        printf("timed out!\n");
-        httplite_close_connection(c);
-        httplite_deactivate_upstream(u);
-        return;
-    }
+    // if (rev->timedout) {
+    //     printf("timed out!\n");
+    //     httplite_close_connection(c);
+    //     httplite_deactivate_upstream(u);
+    //     return;
+    // }
 
     // if we invoke this handler, then we have a valid connection
     // so we can delete the timer
@@ -379,7 +391,11 @@ void httplite_upstream_read_handler(ngx_event_t *rev) {
     }
 
     // all data sent, reset upstream write handler
-    c->write->handler = httplite_empty_handler;
+    c->write->handler = httplite_keepalive_write_handler;
+    c->read->handler = httplite_keepalive_read_handler;
+    u->busy = 0;
+
+    ngx_add_timer(c->write, u->keep_alive);
 
     if (c->read->ready) {
         // upstream has more data to send, add read event
@@ -403,18 +419,14 @@ void httplite_upstream_write_handler(ngx_event_t *wev) {
 
     u = ((httplite_event_data_t*) c->data)->upstream;
 
-    if (!u->active) {
-        ngx_log_error(NGX_LOG_ERR, wev->log, 0, "trying to access inactive usptream %s!", u->peer.name->data);
-        httplite_close_connection(c);
-        return;
-    }
-
     if (wev->timedout) {
         printf("timed out!\n");
         httplite_close_connection(c);
         httplite_deactivate_upstream(u);
         return;
     }
+
+    u->active = 1;
 
     // if we invoke this handler, then we have a valid connection
     // so we can delete the timer
@@ -425,7 +437,6 @@ void httplite_upstream_write_handler(ngx_event_t *wev) {
     }
 
     list = u->request;
-
     r = list->curr;
 
     n = c->send(c, r->buffer, r->size);
@@ -443,108 +454,61 @@ void httplite_upstream_write_handler(ngx_event_t *wev) {
 
     list->curr = list->curr->next;
     if (!list->curr) {
-        u->busy = 0;
         wev->handler = httplite_keepalive_write_handler;
         ngx_add_timer(wev, u->keep_alive);
         return;
     }
 }
 
-httplite_upstream_pool_t *httplite_next_upstream_pool(httplite_connection_pool_iterator_t *connection_pool_iterator) {
-    httplite_connection_pool_t *connection_pool; 
-    int *upstream_pool_index; 
-    ngx_uint_t total_upstream_pools;
-
-    connection_pool = connection_pool_iterator->connection_pool;
-    upstream_pool_index = &connection_pool_iterator->upstream_pool_index;
-    total_upstream_pools = connection_pool->upstream_pools->nelts;
-
-    *upstream_pool_index = (*upstream_pool_index + 1) % total_upstream_pools;
-    connection_pool->pool_index = *upstream_pool_index;
-
-    return &((httplite_upstream_pool_t *)
-        (connection_pool->upstream_pools->elts))[*upstream_pool_index];
-}
-
-int httplite_has_next_upstream(httplite_connection_pool_iterator_t *connection_pool_iterator) {
-    ngx_uint_t num_upstreams;
-    httplite_upstream_pool_iterator_t upstream_pool_iterator;
-    httplite_upstream_pool_t* upstream_pool;
-    
-    upstream_pool_iterator = ((httplite_upstream_pool_iterator_t*) connection_pool_iterator->
-        upstream_pool_iterators->elts)[connection_pool_iterator->upstream_pool_index];
-    upstream_pool = upstream_pool_iterator.upstream_pool;
-    num_upstreams = upstream_pool->upstreams->nelts;
-
-    return upstream_pool->upstream_index % num_upstreams == upstream_pool_iterator.start_index;
-}
-
-httplite_upstream_t *httplite_next_upstream(httplite_connection_pool_iterator_t *connection_pool_iterator) {
-    ngx_uint_t num_upstreams;
-    httplite_upstream_pool_iterator_t upstream_pool_iterator;
-    httplite_upstream_pool_t* upstream_pool;
-
-    upstream_pool_iterator = ((httplite_upstream_pool_iterator_t*) connection_pool_iterator->
-        upstream_pool_iterators->elts)[connection_pool_iterator->upstream_pool_index];
-    upstream_pool = upstream_pool_iterator.upstream_pool;
-    num_upstreams = upstream_pool->upstreams->nelts;
-
-    upstream_pool_iterator.upstream_index = (upstream_pool->upstream_index + 1) % num_upstreams;
-    upstream_pool->upstream_index = upstream_pool_iterator.upstream_index;
-
-    return &((httplite_upstream_t*)upstream_pool->upstreams->elts)[upstream_pool->upstream_index];
-}
-
-httplite_connection_pool_iterator_t *httplite_create_connection_pool_iterator(httplite_connection_pool_t *connection_pool) {
-    httplite_connection_pool_iterator_t *connection_pool_iterator;
-    httplite_upstream_pool_iterator_t* upstream_pool_iterator;
-    httplite_upstream_pool_t* upstream_pool;
-    ngx_array_t *upstream_pool_iterators;
-
-    upstream_pool_iterators = ngx_array_create(connection_pool->pool, 32, sizeof(httplite_upstream_pool_iterator_t));
-    connection_pool_iterator = ngx_pcalloc(connection_pool->pool, sizeof(httplite_connection_pool_iterator_t));
-    connection_pool_iterator->connection_pool = connection_pool;
-    connection_pool_iterator->upstream_pool_index = connection_pool->pool_index,
-    connection_pool_iterator->upstream_pool_iterators = upstream_pool_iterators;
-
-    for (int i = 0; i < connection_pool->upstream_pools->nelts; i++) {
-        upstream_pool = &((httplite_upstream_pool_t*)connection_pool->upstream_pools->elts)[i];
-        upstream_pool_iterator = ngx_array_push(upstream_pool_iterators);
-        upstream_pool_iterator->start_index = upstream_pool->upstream_index;
-        upstream_pool->upstream_index = upstream_pool_iterator->start_index;
-        upstream_pool_iterator->upstream_pool = upstream_pool;
-    }
-
-    return connection_pool_iterator;
-}
-
 httplite_upstream_t *fetch_upstream(httplite_connection_pool_t *c_pool) {
+    httplite_upstream_pool_t    *upstream_pool;
     httplite_upstream_t         *u;
-    httplite_connection_pool_iterator_t* connection_pool_iterator;
 
-    connection_pool_iterator = httplite_create_connection_pool_iterator(c_pool);
-    httplite_next_upstream_pool(connection_pool_iterator);
+    int *upstream_pool_index, *upstream_index;
+    ngx_uint_t num_upstream_pools, num_upstreams;
 
-    while (httplite_has_next_upstream(connection_pool_iterator)) {
-        u = httplite_next_upstream(connection_pool_iterator);
+    /* Get the upstream pool currently pointed to */
+    upstream_pool_index = &c_pool->pool_index;
+    (*upstream_pool_index)++;
 
-        if (u->active && !u->busy) {
+    num_upstream_pools = c_pool->upstream_pools->nelts;
+    upstream_pool = &((httplite_upstream_pool_t *)(c_pool->upstream_pools->elts))[*upstream_pool_index % num_upstream_pools];
+    num_upstreams = upstream_pool->upstreams->nelts;
+
+    for (int i = 1; i < num_upstreams; i++) {
+        int upstream_index_to_check = (upstream_pool->upstream_index + i) % num_upstreams;
+        httplite_upstream_t *upstream_to_check = &((httplite_upstream_t*)upstream_pool->upstreams->elts)[upstream_index_to_check];
+        if (upstream_to_check->active && !upstream_to_check->busy) {
+            upstream_index = &upstream_pool->upstream_index;
+            *upstream_index += i;
+
+            u = &((httplite_upstream_t*)(upstream_pool->upstreams->elts))[*upstream_index % num_upstreams];
             return u;
         }
+
+        i++;
     }
 
     return NULL;
 }
 
 httplite_upstream_t *httplite_fetch_inactive_upstream(httplite_connection_pool_t *c_pool) {
-    httplite_upstream_t *u;
-    httplite_connection_pool_iterator_t* connection_pool_iterator;
+    httplite_upstream_pool_t    *upstream_pool;
+    httplite_upstream_t         *u;
 
-    connection_pool_iterator = httplite_create_connection_pool_iterator(c_pool);
+    int upstream_pool_index, upstream_index;
+    ngx_uint_t num_upstream_pools, num_upstreams;
 
-    while (httplite_has_next_upstream(connection_pool_iterator)) {
-        u = httplite_next_upstream(connection_pool_iterator);
+    upstream_pool_index = c_pool->pool_index;
+    num_upstream_pools = c_pool->upstream_pools->nelts;
+    upstream_pool = &((httplite_upstream_pool_t *)(c_pool->upstream_pools->elts))[upstream_pool_index % num_upstream_pools];
+    num_upstreams = upstream_pool->upstreams->nelts;
+
+    for (int i = 1; i < num_upstreams; i++) {
+        upstream_index = (upstream_pool->upstream_index + i) % num_upstreams;
+        u = &((httplite_upstream_t*)(upstream_pool->upstreams->elts))[upstream_index];
         if (!u->active) {
+            upstream_pool->upstream_index += i;
             return u;
         }
     }

@@ -9,7 +9,7 @@
 
 #include "httplite_upstream_module_configuration.h"
 
-#define MAX_RETRY_TIME 10000
+#define MAX_RETRY_TIME 50000
 
 typedef struct httplite_request_slab_s {
     u_char *buffer;                         /* A pointer to the memory holding the request string */
@@ -31,8 +31,8 @@ typedef struct httplite_upstream_s {
     httplite_request_slab_t    *response;
     ngx_event_t                *timer;
     int                         keep_alive;
-    int                         active  : 1;
-    int                         busy    : 1;
+    int                         active;
+    int                         busy;
 } httplite_upstream_t;
 
 typedef struct {
@@ -40,19 +40,7 @@ typedef struct {
     httplite_upstream_t *upstream;
 } httplite_event_data_t;
 
-typedef struct {
-    httplite_upstream_pool_t* upstream_pool;
-    int upstream_index;
-    int start_index;
-} httplite_upstream_pool_iterator_t;
-
-typedef struct {
-    httplite_connection_pool_t *connection_pool;
-    int upstream_pool_index;
-    ngx_array_t* upstream_pool_iterators;
-} httplite_connection_pool_iterator_t;
-
-httplite_upstream_t* httplite_create_upstream(ngx_pool_t *pool, ngx_array_t *arr, char *address, ngx_int_t port);
+httplite_upstream_t *httplite_create_upstream(ngx_pool_t *pool, ngx_array_t *arr, char *address, ngx_int_t port);
 
 ngx_int_t httplite_free_upstream(httplite_upstream_t* upstream);
 int httplite_check_broken_connection(ngx_connection_t *c);
@@ -70,11 +58,7 @@ void httplite_keepalive_write_handler(ngx_event_t *wev);
 void httplite_upstream_read_handler(ngx_event_t *rev);
 void httplite_upstream_write_handler(ngx_event_t *wev);
 
-httplite_upstream_t* fetch_upstream(httplite_connection_pool_t *c_pool);
+httplite_upstream_t *fetch_upstream(httplite_connection_pool_t *c_pool);
 httplite_upstream_t *httplite_fetch_inactive_upstream(httplite_connection_pool_t *c_pool);
-httplite_upstream_pool_t *httplite_next_upstream_pool(httplite_connection_pool_iterator_t *connection_pool_iterator);
-int httplite_has_next_upstream(httplite_connection_pool_iterator_t *connection_pool_iterator);
-httplite_upstream_t *httplite_next_upstream(httplite_connection_pool_iterator_t *connection_pool_iterator);
-httplite_connection_pool_iterator_t *httplite_create_connection_pool_iterator(httplite_connection_pool_t *connection_pool);
 
 #endif

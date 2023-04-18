@@ -87,7 +87,7 @@ char* httplite_parse_upstream_server(ngx_conf_t *cf, ngx_command_t *cmd, void *d
 
     /* parsing inline arguments */
     for (i = 2; i < cf->args->nelts; i++) {
-        if (ngx_strcmp("connection=", value[i].data) == 0) {
+        if (ngx_strncmp("connections=", value[i].data, 12) == 0) {
             value[i].len -= 12;
             value[i].data += 12;
 
