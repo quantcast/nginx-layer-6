@@ -103,7 +103,6 @@ void httplite_deactivate_upstream(httplite_upstream_t *u) {
 
 void httplite_refresh_upstream_connection(httplite_upstream_t *u, void *data) {
     // TODO: Add testing logic to check if the connection is already made
-    printf("u active? %d\n", u->active);
     ngx_int_t result = ngx_event_connect_peer(&u->peer);
     ngx_event_t *wev = u->peer.connection->write;
     ngx_event_t *rev = u->peer.connection->read;
@@ -176,6 +175,8 @@ void httplite_send_request_to_upstream(httplite_request_list_t *request) {
     }
 
     ngx_connection_t *peer_c = u->peer.connection;
+
+    printf("connection: %d (%p), active? %d, busy? %d\n", ngx_event_ident(peer_c), u, u->active, u->busy);
 
     peer_c->data = client->data;
     if (peer_c->write->ready) {
@@ -289,7 +290,8 @@ void httplite_keepalive_write_handler(ngx_event_t *wev) {
     u = ev_data->upstream;
 
     if (wev->timedout) {
-        printf("keep alive time out has been hit. closing connection\n");
+        wev->timedout = 0;
+        printf("keep alive time out has been hit on write event: %d (%p). closing connection\n", ngx_event_ident(wev->data), u);
         fflush(stdin);
 
         httplite_deactivate_upstream(u);
@@ -327,12 +329,12 @@ void httplite_upstream_read_handler(ngx_event_t *rev) {
     client = ev_data->client;
     u = ev_data->upstream;
 
-    // if (rev->timedout) {
-    //     printf("timed out!\n");
-    //     httplite_close_connection(c);
-    //     httplite_deactivate_upstream(u);
-    //     return;
-    // }
+    if (rev->timedout) {
+        printf("timed out!\n");
+        httplite_close_connection(c);
+        httplite_deactivate_upstream(u);
+        return;
+    }
 
     // if we invoke this handler, then we have a valid connection
     // so we can delete the timer
@@ -396,6 +398,7 @@ void httplite_upstream_read_handler(ngx_event_t *rev) {
     u->busy = 0;
 
     ngx_add_timer(c->write, u->keep_alive);
+    printf("added time to %d (%p)\n", ngx_event_ident(rev->data), u);
 
     if (c->read->ready) {
         // upstream has more data to send, add read event
@@ -420,7 +423,7 @@ void httplite_upstream_write_handler(ngx_event_t *wev) {
     u = ((httplite_event_data_t*) c->data)->upstream;
 
     if (wev->timedout) {
-        printf("timed out!\n");
+        printf("timed out on %d!\n", ngx_event_ident(wev->data));
         httplite_close_connection(c);
         httplite_deactivate_upstream(u);
         return;
