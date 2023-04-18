@@ -8,38 +8,69 @@
 
 #define LENGTH_HEADER "\nContent-Length: "
 #define LENGTH_HEADER_SIZE strlen(LENGTH_HEADER)
+
 #define HEADER_BODY_SEPARATOR "\r\n\r\n"
 #define HEADER_BODY_SEPARATOR_SIZE strlen(HEADER_BODY_SEPARATOR)
+
+#define GET_REQUEST "GET"
+#define GET_REQUEST_LEN strlen(GET_REQUEST)
+
+#define POST_REQUEST "POST"
+#define POST_REQUEST_LEN strlen(POST_REQUEST)
+
 #define HTTP_411_RESPONSE "HTTP/1.1 411 Length Required\r\nCache-Control: no-cache, private\r\n\r\n"
 
 #define str3_cmp(m, c0, c1, c2)     (m[0] == c0 && m[1] == c1 && m[2] == c2)
 #define str4_cmp(m, c0, c1, c2, c3) (m[0] == c0 && m[1] == c1 && m[2] == c2 && m[3] == c3)
 
-
 httplite_request_list_t *httplite_init_list(ngx_connection_t *connection) {
     httplite_request_list_t *list = ngx_pcalloc(connection->pool, sizeof(httplite_request_list_t));
-    
-    httplite_request_slab_t *head = ngx_pcalloc(connection->pool, sizeof(httplite_request_slab_t));
-    
-    if (!head) {
-        ngx_log_error(NGX_ERROR_ALERT, connection->log, 0, "unable to create head slab on connection's memory pool.");
-        return list;
+    if (!list) {
+        ngx_log_error(NGX_ERROR_ALERT, connection->log, 0, "unable to allocate memory for list.");
+        return NULL;
     }
+    
+    // httplite_request_slab_t *head = ngx_pcalloc(connection->pool, sizeof(httplite_request_slab_t));
+    
+    // if (!head) {
+    //     ngx_log_error(NGX_ERROR_ALERT, connection->log, 0, "unable to create head slab on connection's memory pool.");
+    //     return NULL;
+    // }
 
-    head->buffer = ngx_pnalloc(connection->pool, SLAB_SIZE);
+    // head->buffer = ngx_pnalloc(connection->pool, SLAB_SIZE);
 
-    if (!head->buffer) {
-        ngx_log_error(NGX_ERROR_ALERT, connection->log, 0, "unable to the string buffer on connection's memory pool.");
-        return list;
-    }
+    // if (!head->buffer) {
+    //     ngx_log_error(NGX_ERROR_ALERT, connection->log, 0, "unable to the string buffer on connection's memory pool.");
+    //     return NULL;
+    // }
 
-    head->size = 0;
-    head->next = NULL;
-    list->head = head;
-    list->tail = head;
+    // head->size = 0;
+    // head->next = NULL;
+    // list->head = head;
+    // list->tail = head;
     list->connection = connection;
     list->next = NULL;
+
     return list;
+}
+
+httplite_request_list_t *httplite_add_list_to_chain(httplite_request_list_t *list, ngx_connection_t *c) {
+    if (!list) {
+        return httplite_init_list(c);
+    }
+
+    list->next = httplite_init_list(list->connection);
+    return list->next;
+}
+
+int httplite_advance_slab_iterator(httplite_request_slab_t *slab, size_t size) {
+    if (slab->size + size > SLAB_SIZE) {
+        return NGX_ERROR;
+    }
+
+    slab->buffer += size;
+    slab->size -= size;
+    return NGX_OK;
 }
 
 httplite_request_slab_t *httplite_add_slab(httplite_request_list_t *list) {
@@ -51,11 +82,19 @@ httplite_request_slab_t *httplite_add_slab(httplite_request_list_t *list) {
     }
 
     new_slab->size = 0;
-    new_slab->buffer = ngx_pnalloc(list->connection->pool, SLAB_SIZE);
-
-    if (!new_slab->buffer) {
+    new_slab->start = ngx_pnalloc(list->connection->pool, SLAB_SIZE);
+    if (!new_slab->start) {
         ngx_log_error(NGX_ERROR_ALERT,list->connection->log, 0, "unable to the string buffer on connection's memory pool.");
         return NULL;
+    }
+
+    new_slab->buffer = new_slab->start;
+
+    if (!list->head) {
+        list->head = new_slab;
+        list->tail = new_slab;
+        list->next = NULL;
+        return new_slab;
     }
 
     // add the slab to the tail of the list
@@ -63,6 +102,25 @@ httplite_request_slab_t *httplite_add_slab(httplite_request_list_t *list) {
     list->tail = new_slab;
 
     return new_slab;
+}
+
+void httplite_free_request_slab(httplite_request_slab_t *slab, ngx_pool_t *pool) {
+    ngx_pfree(pool, slab->start);
+    ngx_pfree(pool, slab);
+}
+
+void httplite_free_request_list(httplite_request_list_t *list) {
+    httplite_request_slab_t *curr = list->head;
+    while (curr) {
+        httplite_request_slab_t *temp = curr;
+        curr = curr->next;
+        httplite_free_request_slab(temp, list->connection->pool);
+    }
+    ngx_pfree(list->connection->pool, list);
+}
+
+void httplite_remove_head(httplite_request_list_t *list) {
+    httplite_free_request_list(list);
 }
 
 void httplite_close_connection(ngx_connection_t *c)
@@ -121,155 +179,51 @@ void httplite_upstream_read_handler(ngx_event_t *event) {
     upstream->read->handler = httplite_empty_handler;
 }
 
-/* Assumes incoming slab is empty (writes to buffer pointer, overwriting anything there) */
-size_t recv_wrapper(ngx_connection_t *c, httplite_request_slab_t *slab, ngx_event_t *rev) {
-    int n;
-    n = c->recv(c, slab->buffer, SLAB_SIZE);
-
-    httplite_connection_pool_t *connection_pool = ((httplite_upstream_configuration_t*)(c->listening->servers))->connection_pool;
-    httplite_upstream_t *upstream = fetch_upstream(connection_pool);
-
-    httplite_refresh_upstream_connection(upstream);
-    ngx_connection_t *upstream_connection = upstream->peer.connection;
-
-    httplite_event_connection_t *connections = ngx_pcalloc(c->pool, sizeof(httplite_event_connection_t));
-    if (!connections) {
-        fprintf(stderr, "Unable to instantiate httplite_event_connection_t pointer.\n");
-        return NGX_ERROR;
+void *httplite_calloc(ngx_pool_t *pool, size_t size) {
+    void *ret = ngx_pcalloc(pool, size);
+    if (!ret) {
+        ngx_log_error(NGX_ERROR_ALERT, pool->log, 0, "unable to create allocate memory on connection pool.");
+        return NULL;
     }
 
-    connections->client_connection = c;
-    connections->upstream_connection = upstream_connection;
-    connections->request = slab;
-
-    upstream_connection->data = connections;
-    upstream_connection->read->handler = httplite_upstream_read_handler;
-
-    httplite_send_request_to_upstream(upstream, slab);
-
-    if (n == NGX_AGAIN) {
-        if (!rev->timer_set) {
-            ngx_add_timer(rev, DEFAULT_SERVER_TIMEOUT);
-            ngx_reusable_connection(c, 1);
-        }
-
-        if (ngx_handle_read_event(rev, 0) != NGX_OK) {
-            httplite_close_connection(c);
-            return n;
-        }
-
-        return n;
-    }
-
-    if (n == NGX_ERROR) {
-        ngx_log_error(NGX_LOG_INFO, c->log, 0,
-                      "client closed connection");
-        httplite_close_connection(c);
-        return n;
-    }
-
-    slab->size += n;
-
-    c->log->action = "reading client request line";
-
-    ngx_reusable_connection(c, 0);
-
-    return n;
+    return ret;
 }
 
-// TODO: update this function to reflect new request structure
 void httplite_request_handler(ngx_event_t *rev) {
-    ssize_t                    n, m;
-    httplite_request_slab_t   *curr;
-    ngx_connection_t          *c;
-
-    /* read_list = all of the connection buffer content in a single list 
-    *           (read_list potentially includes multiple pipelined requests)
-    *  write_list = the head of a list of lists where each list is a single request
-    *           (write_list will be constructed by the split_request function after looking at read_list)
-    */
-    httplite_request_list_t    *read_list, *write_list; 
+    ngx_connection_t *c;
+    httplite_request_data_t *request_data;
+    httplite_request_list_t *read_list, *write_list;
+    httplite_request_slab_t *next_slab;
 
     c = rev->data;
-
-    ngx_log_debug0(NGX_LOG_DEBUG_HTTP, c->log, 0, "http wait request handler");
-
-    if (rev->timedout) {
-        ngx_log_error(NGX_LOG_INFO, c->log, NGX_ETIMEDOUT, "client timed out");
-        httplite_close_connection(c);
-        return;
-    }
-
-    if (c->close) {
-        httplite_close_connection(c);
-        return;
-    }
- 
-    read_list = httplite_init_list(c);
-    write_list = httplite_init_list(c);
-   
-    curr = read_list->head;
-    
-    if (read_list->head == NULL) {
-        ngx_log_error(NGX_LOG_ALERT, c->log, 0, "unable to allocate space for the request slab.");
-        httplite_close_connection(c);
-        return;
-    }
-
-    if (read_list->head->buffer == NULL) {
-        ngx_log_error(NGX_LOG_ALERT, c->log, 0, "unable to allocate space for the request string.");
-        httplite_close_connection(c);
-        return;
-    }
-
-    //n = recv_wrapper(c, curr, rev);
-    n = 0;
-
-    /* read entire connection into read_list*/
-    //while (rev->ready) {
-    for (;;) {
-        m = 0;
-        if (n != 0 && read_list->tail->size == SLAB_SIZE) {
-            if (!httplite_add_slab(read_list)) {
-                ngx_log_error(NGX_LOG_ALERT, c->log, 0, "unable to add slab.");
-                return;
-            }
+    if (!c->data) {
+        httplite_request_data_t *new_request_data = ngx_pcalloc(c->pool, sizeof(httplite_request_data_t));
+        if (!new_request_data) {
+            return;
         }
-        m = recv(c->fd, read_list->tail->buffer + read_list->tail->size, SLAB_SIZE - read_list->tail->size, 0);
-        fflush(stdout);
-
-        if (m == -1) {
-            break;
+        
+        new_request_data->read_list = httplite_init_list(c);
+        if (!new_request_data->read_list) {
+            return;
         }
 
-        if (m < 0) { 
-            ngx_log_error(NGX_LOG_ALERT, c->log, 0, "failed recv.");
-            return; 
+        if (!httplite_add_slab(new_request_data->read_list)) {
+            return;
         }
 
-        n += m;
-        read_list->tail->size += m;
+        new_request_data->write_list = NULL;
+        c->data = new_request_data;
     }
 
-    /*n = recv(c->fd, read_list->tail->buffer, SLAB_SIZE, 0);
-    n += recv(c->fd, read_list->tail->buffer + read_list->tail->size, SLAB_SIZE, 0);*/
-    fflush(stdout);
-    
-    if (n <= 0) {
-        ngx_log_error(NGX_LOG_ALERT, c->log, 0, "failed recv.");
-        httplite_close_connection(c);
-        return;
+    request_data = c->data;
+    read_list = request_data->read_list;
+    write_list = request_data->write_list;
+
+    if (rev->ready) {
+        read_list->head->size = c->recv(c, read_list->head->buffer, SLAB_SIZE);
     }
-    //printRequests(read_list);
+
     write_list = split_request(read_list, write_list, c);
-
-    // if (write_list == NULL) {
-    //     httplite_close_connection(c);
-    // }
-
-    printRequests(write_list);
-    printf("Total bytes read = %zu\n\n",n);
-    fflush(stdout);
 }
 
 /* given a list of slabs, break it up into a list of lists, 
@@ -279,7 +233,7 @@ httplite_request_list_t *split_request (httplite_request_list_t *read_list, http
                                         ngx_connection_t *c) {
     u_char *curr, *start_ptr, *temp;
     httplite_request_slab_t *read_slab;
-    size_t l, first_iter, header_size;
+    size_t l, iter_no, header_size;
     ssize_t body_size;
     httplite_request_list_t *head;
     enum HTTP_method method; 
@@ -287,7 +241,7 @@ httplite_request_list_t *split_request (httplite_request_list_t *read_list, http
 
     read_slab = read_list->head;
     curr = read_slab->buffer;
-    first_iter = 1;
+    iter_no = 1;
 
     while(read_slab != NULL && curr <= read_slab->buffer + read_slab->size) { /* each iteration will find one request */
 
@@ -295,21 +249,21 @@ httplite_request_list_t *split_request (httplite_request_list_t *read_list, http
             if (read_slab->next == NULL) {
                 break;
             }
-            if (read_slab->size < SLAB_SIZE) {
-                ngx_log_error(NGX_LOG_ALERT, c->log, 0, "underfull slab followed by another slab");
-                httplite_close_connection(c);
-                return NULL;
-            }
-
+            // if (read_slab->size < SLAB_SIZE) {
+            //     ngx_log_error(NGX_LOG_ALERT, c->log, 0, "underfull slab followed by another slab");
+            //     httplite_close_connection(c);
+            //     return NULL;
+            // }
         }
 
         /* make a new list to hold the next request, except on the first iteration */
-        if (first_iter != 1) {
+        if (iter_no != 1) {
             httplite_request_list_t *temp = httplite_init_list(write_list->connection);
+            httplite_add_slab(temp);
             write_list->next = temp;
             write_list = write_list->next;
         }
-        ++first_iter;
+        ++iter_no;
 
         body_size = 0;
         header_size = 0;
@@ -336,8 +290,8 @@ httplite_request_list_t *split_request (httplite_request_list_t *read_list, http
             }*/
 
             /* save these pointers before copying to use later when checking if separator is split */
-            u_char* end = read_slab->buffer + read_slab->size;
-            u_char* start = read_slab->next->buffer;
+            u_char *end = read_slab->buffer + read_slab->size;
+            u_char *start = read_slab->next->buffer;
 
             /* update header_size */
             header_size = read_slab->buffer + read_slab->size - start_ptr;

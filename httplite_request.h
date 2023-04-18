@@ -14,7 +14,8 @@
 enum HTTP_method{GET, POST};
 
 typedef struct httplite_request_slab_s {
-    u_char *buffer;                         /* A pointer to the memory holding the request string */
+    u_char *start;                          /* A pointer that points to the beginning of the request string */
+    u_char *buffer;                         /* A pointer to the memory holding the current position in the request string */
     struct httplite_request_slab_s *next;   /* A pointer to the next slab in the linked list */
     httplite_upstream_t *upstream;          /* An (optional) pointer to the upstream to be sent to */
     size_t size;                            /* The number of bytes that have been filled in the slab */
@@ -24,7 +25,7 @@ typedef struct httplite_request_list_s {
     httplite_request_slab_t *head;
     httplite_request_slab_t *tail;
     ngx_connection_t *connection;
-   struct httplite_request_list_s *next;                 /* Points to next request in pipeline queue */
+    struct httplite_request_list_s *next;                 /* Points to next request in pipeline queue */
 } httplite_request_list_t;
 
 typedef struct {
@@ -33,6 +34,11 @@ typedef struct {
     httplite_request_slab_t *request;
     httplite_request_slab_t *response;
 } httplite_event_connection_t;
+
+typedef struct httplite_client_data_s {
+    httplite_request_list_t *read_list;
+    httplite_request_list_t *write_list;
+} httplite_request_data_t;
 
 /**
  * @returns new httplite linked list of slabs, where each slab contains a
@@ -56,6 +62,10 @@ void copy_to_list(httplite_request_list_t *write_list, size_t size, httplite_req
  * @returns A pointer to the new slab in the list
 */
 httplite_request_slab_t *httplite_add_slab(httplite_request_list_t *list);
+
+void httplite_free_request_slab(httplite_request_slab_t *slab, ngx_pool_t *pool);
+void httplite_free_request_list(httplite_request_list_t *list);
+void httplite_remove_head(httplite_request_list_t *list);
 
 void httplite_request_handler(ngx_event_t *rev);
 void httplite_close_connection(ngx_connection_t *c);

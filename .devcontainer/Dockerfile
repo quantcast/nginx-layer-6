@@ -3,7 +3,7 @@ FROM ubuntu:latest
 RUN apt-get update && \
     apt-get -y install systemd init apport sudo git mercurial make gdb \
     build-essential libpcre3 libpcre3-dev zlib1g \
-    zlib1g-dev libssl-dev zsh curl python3
+    zlib1g-dev libssl-dev zsh curl python3 netcat
 
 WORKDIR /workspaces
 
