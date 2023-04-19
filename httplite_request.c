@@ -137,7 +137,6 @@ size_t recv_wrapper(ngx_connection_t *c, httplite_request_list_t *list, ngx_even
 void httplite_request_handler(ngx_event_t *rev) {
     ssize_t                    n;
     httplite_request_list_t   *list;
-    httplite_request_slab_t   *curr;
     ngx_connection_t          *c;
 
     c = rev->data;

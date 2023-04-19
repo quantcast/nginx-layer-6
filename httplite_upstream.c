@@ -404,7 +404,7 @@ void httplite_upstream_read_handler(ngx_event_t *rev) {
     }
 
     // data was fully sent, check if there's more to send
-    if (rc < response->size) {
+    if ((size_t) rc < response->size) {
         response->buffer += rc;
         response->size -= rc;
         ngx_handle_write_event(client->write, 0);
@@ -476,7 +476,7 @@ void httplite_upstream_write_handler(ngx_event_t *wev) {
         return;
     }
 
-    if (n != r->size) {
+    if ((size_t) n != r->size) {
         list->curr->buffer += n;
         return;
     }
@@ -511,7 +511,7 @@ httplite_upstream_t *fetch_upstream(httplite_connection_pool_t *c_pool) {
     upstream_pool = &((httplite_upstream_pool_t *)(c_pool->upstream_pools->elts))[*upstream_pool_index % num_upstream_pools];
     num_upstreams = upstream_pool->upstreams->nelts;
 
-    for (int i = 1; i < num_upstreams; i++) {
+    for (ngx_uint_t i = 1; i < num_upstreams; i++) {
         int upstream_index_to_check = (upstream_pool->upstream_index + i) % num_upstreams;
         httplite_upstream_t *upstream_to_check = &((httplite_upstream_t*)upstream_pool->upstreams->elts)[upstream_index_to_check];
         if (upstream_to_check->active && !upstream_to_check->busy) {
@@ -540,7 +540,7 @@ httplite_upstream_t *httplite_fetch_inactive_upstream(httplite_connection_pool_t
     upstream_pool = &((httplite_upstream_pool_t *)(c_pool->upstream_pools->elts))[upstream_pool_index % num_upstream_pools];
     num_upstreams = upstream_pool->upstreams->nelts;
 
-    for (int i = 1; i < num_upstreams; i++) {
+    for (ngx_uint_t i = 1; i < num_upstreams; i++) {
         upstream_index = (upstream_pool->upstream_index + i) % num_upstreams;
         u = &((httplite_upstream_t*)(upstream_pool->upstreams->elts))[upstream_index];
         if (!u->active) {
