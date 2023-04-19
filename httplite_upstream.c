@@ -91,7 +91,7 @@ int httplite_check_broken_connection(ngx_connection_t *c) {
 
 void httplite_deactivate_upstream(httplite_upstream_t *u) {
     static int i = 0;
-    printf("[%s]\n  deactivating upstream %p.\n  call #%d\n\n", __func__, u, ++i);
+    printf("[%s @ %s:%d]\n  deactivating upstream %p.\n  call #%d\n\n", __func__, __FILE__, __LINE__, u, ++i);
 
     if (!u) {
         printf("trying to free an upstream that is null.\n");
@@ -120,11 +120,11 @@ void httplite_refresh_upstream_connection(httplite_upstream_t *u, void *data) {
         // the proper handler to forward connections
         u->peer.connection->data = data;
         printf(
-            "[%s]\n"
+            "[%s @ %s:%d]\n"
             "  creating upstream connection\n"
             "  upstream in peer.connection->data: %p; actual upstream: %p\n"
             "  connection data: %d (%p)\n\n", 
-            __func__, ((httplite_event_data_t*)u->peer.connection->data)->upstream, u, ngx_event_ident(u->peer.connection), u->peer.connection
+            __func__, __FILE__, __LINE__, ((httplite_event_data_t*)u->peer.connection->data)->upstream, u, ngx_event_ident(u->peer.connection), u->peer.connection
         );
 
         rev->handler = httplite_keepalive_read_handler;
@@ -309,11 +309,11 @@ void httplite_keepalive_write_handler(ngx_event_t *wev) {
         ngx_log_debug2(NGX_LOG_INFO, c->log, 0, "keep alive time out has been hit on write event: %d (%p). closing connection\n", ngx_event_ident(wev->data), wev->data);
 
         printf(
-            "[%s]\n"
+            "[%s @ %s:%d]\n"
             "  keep alive time out has been hit on write event: %d (%p)\n"
             "  upstream in connection->data: %p\n"
             "  closing connection.\n\n", 
-            __func__, ngx_event_ident(wev->data), wev->data, u
+            __func__, __FILE__, __LINE__, ngx_event_ident(wev->data), wev->data, u
         );
         fflush(stdin);
 
@@ -441,6 +441,14 @@ void httplite_upstream_write_handler(ngx_event_t *wev) {
 
     u = ((httplite_event_data_t*) c->data)->upstream;
 
+    printf(
+        "[%s @ %s:%d]\n"
+        "  upstream write handler called\n"
+        "  connection id: %d (%p)\n"
+        "  connection->data: %p\n\n",
+        __func__, __FILE__, __LINE__, ngx_event_ident(u->peer.connection), u->peer.connection, u
+    );
+
     if (wev->timedout) {
         printf("timed out on %d!\n", ngx_event_ident(wev->data));
         httplite_deactivate_upstream(u);
@@ -476,6 +484,13 @@ void httplite_upstream_write_handler(ngx_event_t *wev) {
     list->curr = list->curr->next;
     if (!list->curr) {
         wev->handler = httplite_keepalive_write_handler;
+        printf(
+            "[%s @ %s:%d]\n"
+            "  exiting upstream write handler\n"
+            "  connection id: %d (%p)\n"
+            "  connection->data: %p\n\n",
+            __func__, __FILE__, __LINE__, ngx_event_ident(u->peer.connection), u->peer.connection, ((httplite_event_data_t*)(u->peer.connection->data))->upstream
+        );
         ngx_add_timer(wev, u->keep_alive);
         return;
     }
