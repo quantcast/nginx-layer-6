@@ -14,8 +14,8 @@
 enum HTTP_method{GET, POST};
 
 typedef struct httplite_request_slab_s {
-    u_char *start;                          /* A pointer that points to the beginning of the request string */
-    u_char *buffer;                         /* A pointer to the memory holding the current position in the request string */
+    u_char *start;                         /* A pointer that points to the beginning of the request string */
+    u_char *buffer;                            /* A pointer to the memory holding the current position in the request string */
     struct httplite_request_slab_s *next;   /* A pointer to the next slab in the linked list */
     httplite_upstream_t *upstream;          /* An (optional) pointer to the upstream to be sent to */
     size_t size;                            /* The number of bytes that have been filled in the slab */
@@ -37,7 +37,17 @@ typedef struct {
 
 typedef struct httplite_client_data_s {
     httplite_request_list_t *read_list;
+    httplite_request_list_t *write_list_head;
     httplite_request_list_t *write_list;
+    httplite_request_list_t *staging_list;
+    size_t bytes_remaining;
+    size_t step_number;
+    /*
+    0 = start
+    1 = find separator
+    2 = find Content Length header, value, and request type
+    3 = go to end of body
+    */
 } httplite_request_data_t;
 
 /**
@@ -54,6 +64,7 @@ httplite_request_list_t *httplite_init_list(ngx_connection_t *connection);
  * (read_start_ptr points to within read_slab's buffer)
 */
 void copy_to_list(httplite_request_list_t *write_list, size_t size, httplite_request_slab_t **read_slab, u_char **read_start_ptr);
+void copy_to_list_2(httplite_request_list_t *write_list, size_t read_size, httplite_request_slab_t *read_slab, u_char **read_start_ptr);
 
 
 /**
@@ -63,36 +74,17 @@ void copy_to_list(httplite_request_list_t *write_list, size_t size, httplite_req
 */
 httplite_request_slab_t *httplite_add_slab(httplite_request_list_t *list);
 
-httplite_request_slab_t *httplite_init_slab(ngx_connection_t *c);
-
 void httplite_request_handler(ngx_event_t *rev);
 void httplite_close_connection(ngx_connection_t *c);
 
 void httplite_send_request_to_upstream(httplite_upstream_t *upstream, httplite_request_slab_t *request);
 
-/**
- * Given a slab, looks at the buffer (assumed to contain all the headers of a request)
- * 
- * @returns Total request length = size of headers + size of body 
-*/
-ssize_t find_request_length(httplite_request_slab_t *slab);
-
-/**
- * Reads from a connection into a slab buffer (overwrites contents)
- * 
- * @returns Number of bytes read
-*/
-size_t recv_wrapper(ngx_connection_t *c, httplite_request_slab_t *request, ngx_event_t *rev);
-
-httplite_request_list_t *split_request (httplite_request_slab_t *read_slab, httplite_request_list_t *write_list,
+httplite_request_list_t *split_request (httplite_request_list_t *read_list, httplite_request_list_t *write_list,
                                         ngx_connection_t *c);
+void split_request_2(httplite_request_data_t *request_data, ngx_connection_t *c);
 
-/**
- * Used to free a slab that is not needed anymore by using ngx_free() instead of ngx_pfree() which is used to
- * free large allocations
- * @cite: https://www.nginx.com/resources/wiki/extending/api/alloc/
-*/
-void httplite_free_slab (httplite_request_slab_t *slab);
+httplite_request_list_t *httplite_add_list_to_chain(httplite_request_list_t *list, ngx_connection_t *c);
+
 void printRequests (httplite_request_list_t *requests);
 void printRequest(httplite_request_list_t *request);
 void httplite_client_handle_wakeup(ngx_event_t *event);
