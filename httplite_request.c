@@ -477,7 +477,38 @@ void split_request_2 (httplite_request_data_t *request_data, ngx_connection_t *c
             case 0:
                 lookahead = NULL;
                 request_data->bytes_remaining = 0;
-                //write_list = httplite_add_list_to_chain(write_list, c);
+
+                /* check if separator is split across slabs */
+                size_t split_bytes = 0;
+                if (staging_slab->size != 0) {
+                    u_char* end = staging_slab->start + staging_slab->size;
+                    u_char* start = read_slab->start;
+                    
+                    if (*(end - 3) == HEADER_BODY_SEPARATOR[0] &&
+                        *(end - 2) == HEADER_BODY_SEPARATOR[1] &&
+                        *(end - 1) == HEADER_BODY_SEPARATOR[2] &&
+                        *(start)   == HEADER_BODY_SEPARATOR[3]) {
+                        split_bytes = 1;
+                    } else if (*(end - 2) == HEADER_BODY_SEPARATOR[0] &&
+                            *(end - 1) == HEADER_BODY_SEPARATOR[1] &&
+                            *(start) == HEADER_BODY_SEPARATOR[2] &&
+                            *(start + 1)   == HEADER_BODY_SEPARATOR[3]) {
+                        split_bytes = 2;
+                    } else if (*(end - 1) == HEADER_BODY_SEPARATOR[0] &&
+                            *(start) == HEADER_BODY_SEPARATOR[1] &&
+                            *(start + 1) == HEADER_BODY_SEPARATOR[2] &&
+                            *(start + 2)   == HEADER_BODY_SEPARATOR[3]) {
+                        split_bytes = 3;
+                    }
+                }
+
+                if (split_bytes != 0) { /* separator was split */
+                    read_slab->buffer = read_slab->start;
+                    copy_to_list_2(request_data->staging_list, split_bytes, read_slab, &(read_slab->buffer));
+                    request_data->step_number = 1;
+                    break;
+                }
+
                 lookahead = (u_char*) ngx_strstr(read_slab->buffer, HEADER_BODY_SEPARATOR);
                 size_t bytes_searched = read_slab->start + read_slab->size - read_slab->buffer;
                 /* bytes_searched is used for error checking later */
@@ -488,35 +519,7 @@ void split_request_2 (httplite_request_data_t *request_data, ngx_connection_t *c
                     request_data->step_number = 1;
                     break;
                 } else {
-                    size_t split_bytes = 0;
-                    if (staging_slab->size != 0) {
-                        /* check if separator is split across slabs */
-                        u_char* end = staging_slab->start + staging_slab->size;
-                        u_char* start = read_slab->start;
-                        
-                        if (*(end - 3) == HEADER_BODY_SEPARATOR[0] &&
-                            *(end - 2) == HEADER_BODY_SEPARATOR[1] &&
-                            *(end - 1) == HEADER_BODY_SEPARATOR[2] &&
-                            *(start)   == HEADER_BODY_SEPARATOR[3]) {
-                            split_bytes = 1;
-                        } else if (*(end - 2) == HEADER_BODY_SEPARATOR[0] &&
-                                *(end - 1) == HEADER_BODY_SEPARATOR[1] &&
-                                *(start) == HEADER_BODY_SEPARATOR[2] &&
-                                *(start + 1)   == HEADER_BODY_SEPARATOR[3]) {
-                            split_bytes = 2;
-                        } else if (*(end - 1) == HEADER_BODY_SEPARATOR[0] &&
-                                *(start) == HEADER_BODY_SEPARATOR[1] &&
-                                *(start + 1) == HEADER_BODY_SEPARATOR[2] &&
-                                *(start + 2)   == HEADER_BODY_SEPARATOR[3]) {
-                            split_bytes = 3;
-                        }
-                    }
-
-                    if (split_bytes != 0) { /* separator was split */
-                        copy_to_list_2(request_data->staging_list, split_bytes, read_slab, &(read_slab->start));
-                        request_data->step_number = 1;
-                        break;
-                    } else if (bytes_searched >= SLAB_SIZE) {
+                    if (bytes_searched >= SLAB_SIZE) {
                         ngx_log_error(NGX_ERROR_ALERT, c->log, 0, "headers span more than one packet");
                         return;
                     } else {
