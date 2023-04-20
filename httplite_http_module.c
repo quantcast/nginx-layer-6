@@ -18,7 +18,7 @@ ngx_command_t httplite_http_commands[] = {
     },
 
     {
-        ngx_string("port"),
+        ngx_string("listen"),
         HTTPLITE_SERVER_CONFIGURATION | NGX_CONF_TAKE1,
         ngx_conf_set_num_slot,
         HTTPLITE_SERVER_CONFIGURATION_OFFSET,
@@ -43,6 +43,7 @@ ngx_command_t httplite_http_commands[] = {
         0,
         NULL 
     },
+
     {
         ngx_string("server"),
         HTTPLITE_UPSTREAM_CONFIGURATION | NGX_CONF_1MORE,
@@ -51,6 +52,16 @@ ngx_command_t httplite_http_commands[] = {
         0,
         NULL
     },
+
+    {
+        ngx_string("keep_alive"),
+        HTTPLITE_UPSTREAM_CONFIGURATION | NGX_CONF_1MORE,
+        ngx_conf_set_num_slot,
+        HTTPLITE_UPSTREAM_CONFIGURATION_OFFSET,
+        offsetof(httplite_upstream_configuration_t, keep_alive),
+        NULL
+    },
+
     ngx_null_command
 };
 

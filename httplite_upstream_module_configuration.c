@@ -47,6 +47,7 @@ httplite_create_upstream_configuration(ngx_conf_t *cf)
     }
 
     cucf->connection_pool = ngx_pcalloc(cf->pool, sizeof(httplite_connection_pool_t));
+    cucf->connection_pool->pool = cf->pool;
     if (!cucf->connection_pool) {
         fprintf(stderr, "Unable to allocate space for connection pool.\n");
         return NULL;
@@ -57,6 +58,8 @@ httplite_create_upstream_configuration(ngx_conf_t *cf)
 
     cucf->balancing_algorithm = 0;
     cucf->pool = ngx_create_pool(NGX_DEFAULT_POOL_SIZE, cf->log);
+
+    cucf->keep_alive = NGX_CONF_UNSET;
 
     return cucf;
 }
@@ -74,12 +77,7 @@ char* httplite_parse_upstream_server(ngx_conf_t *cf, ngx_command_t *cmd, void *d
 
     upstream_server = (char*)value[1].data;
     port_str = strstr(upstream_server, ":") + 1;
-
-    if (port_str == NULL) {
-        port = DEFAULT_PORT;
-    } else {
-        port = atoi(port_str);
-    }
+    port = port_str ? atoi(port_str) : DEFAULT_PORT;
 
     /* parsing the port number from the first argument */
     server_len = port_str - upstream_server;
@@ -89,7 +87,7 @@ char* httplite_parse_upstream_server(ngx_conf_t *cf, ngx_command_t *cmd, void *d
 
     /* parsing inline arguments */
     for (i = 2; i < cf->args->nelts; i++) {
-        if (ngx_strcmp("connection=", value[i].data) == 0) {
+        if (ngx_strncmp("connections=", value[i].data, 12) == 0) {
             value[i].len -= 12;
             value[i].data += 12;
 

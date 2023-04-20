@@ -2,11 +2,13 @@ const http = require("http");
 
 http
   .createServer((req, res) => {
+    let msg = ""
     req.on("data", (chunk) => {
       console.log(`chunk: ${chunk}`);
+      msg = chunk
     });
     req.on("end", () => {
-      res.write("Pong.\n");
+      res.write(`${msg}\n`);
       res.end();
     });
   })
