@@ -197,7 +197,6 @@ void httplite_request_handler(ngx_event_t *rev) {
 
     split_request(request_data, c);
     request_data->pending_read_slabs -= 1;
-    printRequests(request_data->write_list);
 }
 
 void split_request (httplite_request_data_t *request_data, ngx_connection_t *c) {
@@ -422,7 +421,7 @@ void copy_to_list (httplite_request_list_t *write_list, size_t read_size,
 
 }
 
-/*Helper methods to print out requests in the queue*/
+/* Helper methods to print out requests in the queue (used for testing) */
 
 void printRequests (httplite_request_list_t *requests) {
     printf("%s", "Printing request queue\n\n");
