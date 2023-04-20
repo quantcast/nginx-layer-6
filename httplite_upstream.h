@@ -51,7 +51,8 @@ void httplite_send_request_to_upstream(httplite_request_list_t *request);
 void httplite_fetch_upstream_and_send_request(httplite_request_list_t *request);
 void httplite_refresh_upstream_connection(httplite_upstream_t *upstream);
 
-void httplite_send_client_error(ngx_event_t *wev);
+void httplite_send_client_error(ngx_connection_t *client, char *message);
+void httplite_send_client_error_handler(ngx_event_t *wev);
 void httplite_find_upstream_timeout_handler(ngx_event_t *ev);
 
 void httplite_keepalive_read_handler(ngx_event_t *rev);

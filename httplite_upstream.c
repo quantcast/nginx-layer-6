@@ -149,7 +149,7 @@ void httplite_fetch_upstream_and_send_request(httplite_request_list_t *request) 
 
     if (u == NULL)  {
         printf("All connections are busy. Please try again later.\n");
-        httplite_send_client_error(client->write);
+        httplite_send_client_error(client, HTTP_503_RESPONSE);
         return;
     }
 
@@ -204,7 +204,26 @@ void httplite_refresh_upstream_connection(httplite_upstream_t *u) {
     }
 }
 
-void httplite_send_client_error(ngx_event_t *wev) {
+void httplite_send_client_error(ngx_connection_t *client, char *message) {
+    if (client->write->ready) {
+        char *message = HTTP_503_RESPONSE;
+        int n = client->send(client, message, strlen(message));
+        
+        if (n == NGX_ERROR) {
+            ngx_log_error(NGX_ERROR_ALERT, client->log, 0, "unable to send error response to client!");
+        }
+
+        client->write->handler = httplite_empty_handler;
+        return;
+    }
+
+    client->data = ngx_pcalloc(client->pool, sizeof(HTTP_503_RESPONSE));
+    memcpy(client->data, HTTP_503_RESPONSE, sizeof(HTTP_503_RESPONSE));
+
+    client->write->handler = httplite_send_client_error_handler;
+}
+
+void httplite_send_client_error_handler(ngx_event_t *wev) {
     ngx_connection_t *client;
     char *message;
     int n;
@@ -223,9 +242,9 @@ void httplite_send_client_error(ngx_event_t *wev) {
 
     client = wev->data;
     message = client->data;
-    ngx_str_t response = ngx_string(message);
     
-    n = client->send(client, response.data, response.len);
+    n = client->send(client, message, strlen(message));
+    client->write->handler = httplite_empty_handler;
 
     if (n == NGX_ERROR) {
         ngx_log_error(NGX_ERROR_ALERT, wev->log, 0, "unable to send error response to client!");
@@ -246,8 +265,8 @@ void httplite_find_upstream_timeout_handler(ngx_event_t *ev) {
     httplite_free_list(u->request);
 
     if (client->write->ready) {
-        ngx_str_t message = ngx_string(HTTP_503_RESPONSE);
-        int n = client->send(client, message.data, message.len);
+        char *message = HTTP_503_RESPONSE;
+        int n = client->send(client, message, strlen(message));
 
         if (n == NGX_ERROR) {
             ngx_log_error(NGX_ERROR_ALERT, peer_c->log, 0, "unable to send error response to client!");
@@ -257,8 +276,7 @@ void httplite_find_upstream_timeout_handler(ngx_event_t *ev) {
         return;
     }
 
-    client->data = HTTP_503_RESPONSE;
-    client->write->handler = httplite_send_client_error;
+    httplite_send_client_error(client, HTTP_503_RESPONSE);
 
     ngx_pfree(u->pool, u->timer);
     u->timer = NULL;
