@@ -91,7 +91,7 @@ int httplite_check_broken_connection(ngx_connection_t *c) {
 
 void httplite_deactivate_upstream(httplite_upstream_t *u) {
     if (!u) {
-        printf("trying to free an upstream that is null.\n");
+        fprintf(stderr, "trying to free an upstream that is null.\n");
         return;
     }
 
@@ -149,6 +149,7 @@ void httplite_fetch_upstream_and_send_request(httplite_request_list_t *request) 
 
     if (u == NULL)  {
         printf("All connections are busy. Please try again later.\n");
+        ngx_log_debug0(NGX_LOG_WARN, client->log, 0, "All connections are busy. Please try again later.\n");
         httplite_send_client_error(client, HTTP_503_RESPONSE);
         return;
     }
@@ -357,7 +358,7 @@ void httplite_upstream_read_handler(ngx_event_t *rev) {
     u = ev_data->upstream;
 
     if (rev->timedout) {
-        printf("timed out!\n");
+        ngx_log_debug1(NGX_LOG_INFO, c->log, 0, "timed out on connection %d.\n", ngx_event_ident(rev->data));
         httplite_deactivate_upstream(u);
         return;
     }
@@ -390,7 +391,6 @@ void httplite_upstream_read_handler(ngx_event_t *rev) {
 
     // wait until client is write ready to send to client
     if (!client->write->ready) {
-        printf("client not ready to write yet\n");
         ngx_add_timer(rev, DEFAULT_CLIENT_WRITE_TIMEOUT);
         return;
     }
@@ -449,7 +449,7 @@ void httplite_upstream_write_handler(ngx_event_t *wev) {
     u = ((httplite_event_data_t*) c->data)->upstream;
 
     if (wev->timedout) {
-        printf("timed out on %d!\n", ngx_event_ident(wev->data));
+        ngx_log_debug1(NGX_LOG_INFO, c->log, 0, "timed out on connection %d.\n", ngx_event_ident(wev->data));
         httplite_deactivate_upstream(u);
         return;
     }
