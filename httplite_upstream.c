@@ -507,6 +507,11 @@ httplite_upstream_t *fetch_upstream(httplite_connection_pool_t *c_pool) {
     upstream_pool = &((httplite_upstream_pool_t *)(c_pool->upstream_pools->elts))[*upstream_pool_index % num_upstream_pools];
     num_upstreams = upstream_pool->upstreams->nelts;
 
+    if (num_upstreams == 1) {
+        u = (httplite_upstream_t*)(upstream_pool->upstreams->elts);
+        return (u->active && !u->busy) ? u : NULL;
+    }
+
     for (ngx_uint_t i = 1; i < num_upstreams; i++) {
         int upstream_index_to_check = (upstream_pool->upstream_index + i) % num_upstreams;
         httplite_upstream_t *upstream_to_check = &((httplite_upstream_t*)upstream_pool->upstreams->elts)[upstream_index_to_check];
@@ -517,8 +522,6 @@ httplite_upstream_t *fetch_upstream(httplite_connection_pool_t *c_pool) {
             u = &((httplite_upstream_t*)(upstream_pool->upstreams->elts))[*upstream_index % num_upstreams];
             return u;
         }
-
-        i++;
     }
 
     return NULL;
@@ -535,6 +538,11 @@ httplite_upstream_t *httplite_fetch_inactive_upstream(httplite_connection_pool_t
     num_upstream_pools = c_pool->upstream_pools->nelts;
     upstream_pool = &((httplite_upstream_pool_t *)(c_pool->upstream_pools->elts))[upstream_pool_index % num_upstream_pools];
     num_upstreams = upstream_pool->upstreams->nelts;
+
+    if (num_upstreams == 1) {
+        u = (httplite_upstream_t*)(upstream_pool->upstreams->elts);
+        return u->active ? NULL : u;
+    }
 
     for (ngx_uint_t i = 1; i < num_upstreams; i++) {
         upstream_index = (upstream_pool->upstream_index + i) % num_upstreams;

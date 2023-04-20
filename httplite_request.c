@@ -3,6 +3,7 @@
 #include <ngx_string.h>
 #include <ngx_event.h>
 
+#include "httplite_server.h"
 #include "httplite_request.h"
 #include "httplite_upstream.h"
 
