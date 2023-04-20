@@ -162,12 +162,15 @@ void httplite_fetch_upstream_and_send_request(httplite_request_list_t *request) 
         return;
     }
 
+    u->timer = timer;
     timer->data = u->data;
     timer->handler = httplite_find_upstream_timeout_handler;
     timer->log = u->peer.log;
+    timer->cancelable = 1;
+    timer->handler = httplite_find_upstream_timeout_handler;
+    // TODO: This timer does not fire when exhausted.
     ngx_add_timer(timer, MAX_RETRY_TIME);
 
-    u->timer = timer;
     u->busy = 1;
     u->request = request;
     u->keep_alive = cucf->keep_alive;
@@ -260,26 +263,19 @@ void httplite_find_upstream_timeout_handler(ngx_event_t *ev) {
     ngx_log_debug0(NGX_LOG_WARN, u->pool->log, 0, "reached max timeout for finding upstream. dropping request");
 
     // remove the write event keep alive
-    peer_c->write->handler = httplite_keepalive_write_handler;
-    peer_c->read->handler = httplite_keepalive_read_handler;
-    httplite_free_list(u->request);
-
-    if (client->write->ready) {
-        char *message = HTTP_503_RESPONSE;
-        int n = client->send(client, message, strlen(message));
-
-        if (n == NGX_ERROR) {
-            ngx_log_error(NGX_ERROR_ALERT, peer_c->log, 0, "unable to send error response to client!");
-        }
-
-        client->write->handler = httplite_empty_handler;
-        return;
+    if (peer_c) {
+        peer_c->write->handler = httplite_keepalive_write_handler;
+        peer_c->read->handler = httplite_keepalive_read_handler;
     }
 
-    httplite_send_client_error(client, HTTP_503_RESPONSE);
+    if (u->request) {
+        httplite_free_list(u->request);
+    }
 
     ngx_pfree(u->pool, u->timer);
     u->timer = NULL;
+
+    httplite_send_client_error(client, HTTP_503_RESPONSE);
 }
 
 void httplite_keepalive_read_handler(ngx_event_t *rev) {
@@ -415,7 +411,7 @@ void httplite_upstream_read_handler(ngx_event_t *rev) {
     }
 
     // data was fully sent, check if there's more to send
-    if ((size_t) rc < response->size) {
+    if (rc < (int) response->size) {
         response->buffer += rc;
         response->size -= rc;
         ngx_handle_write_event(client->write, 0);
@@ -479,7 +475,7 @@ void httplite_upstream_write_handler(ngx_event_t *wev) {
         return;
     }
 
-    if ((size_t) n != r->size) {
+    if (n != (int) r->size) {
         list->curr->buffer += n;
         return;
     }
