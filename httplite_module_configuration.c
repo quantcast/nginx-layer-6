@@ -27,7 +27,7 @@ char* httplite_block(
 
     /* count all modules and set up their indices */
     httplite_max_module_count = 0;
-    for (m = 0; ngx_modules[m]; m++) {
+    for (ngx_uint_t m = 0; ngx_modules[m]; m++) {
 
         if (ngx_modules[m]->type != HTTPLITE_MODULE) {
             continue;
@@ -92,7 +92,7 @@ char* httplite_block(
         return rv;
     }
 
-    for (m = 0; ngx_modules[m]; m++) {
+    for (ngx_uint_t m = 0; ngx_modules[m]; m++) {
 
         if (ngx_modules[m]->type != HTTPLITE_MODULE) {
             continue;
