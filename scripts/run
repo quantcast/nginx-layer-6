@@ -11,6 +11,7 @@ VERBOSE=0
 QUIET=0
 REMOVE_OUT=1
 DEBUG=0
+CONF_FILE='nginx.conf'
 CURRENT_DIR=$(pwd)
 
 # either the absolute path to the module or the relative path from nginx to the module
@@ -48,6 +49,11 @@ while [[ $# -gt 0 ]]; do
             REMOVE_OUT=0
             shift
             ;;
+        -f|--conf-file)
+            shift
+            CONF_FILE=$1
+            shift
+            ;;
         -d|--debug)
             DEBUG=1
             shift
@@ -55,6 +61,7 @@ while [[ $# -gt 0 ]]; do
         -h|--help|-*|--*)
             echo 'Usage: ./run [options]'
             echo "    --configure (-c) - Reconfigures nginx"
+            echo "    --conf-file (-f) - Relative path to config file to use"
             echo "    --debug     (-d) - Makes nginx and opens in lldb debugger"
             echo "    --module    (-m) - Either the absolute path to the module or the relative path from nginx to the module (default \"../nginx-layer-6\")"
             echo "    --preserve  (-p) - Preserve the out/ directory (does not delete between runs)"
@@ -110,15 +117,15 @@ else
     make >> /dev/null;
 fi
 
-echo "Starting nginx using configuration $CURRENT_DIR/nginx.conf"
+echo "Starting nginx using configuration $CURRENT_DIR/$CONF_FILE"
 # logic for quiet command
 if [ $QUIET == 1 ]
 then
-    out/sbin/nginx -c $CURRENT_DIR/nginx.conf >> /dev/null
+    out/sbin/nginx -c $CURRENT_DIR/$CONF_FILE >> /dev/null
 elif [ $DEBUG == 1 ]
 then
     cd $CURRENT_DIR
     gdb ../nginx/out/sbin/nginx
 else
-    out/sbin/nginx -c $CURRENT_DIR/nginx.conf
+    out/sbin/nginx -c $CURRENT_DIR/$CONF_FILE
 fi

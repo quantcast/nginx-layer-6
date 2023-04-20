@@ -7,7 +7,7 @@ http.createServer((req, res) => {
         msg += chunk;
     });
     req.on("close", () => {
-        res.write(`${msg}`);
+        res.write(`${msg}\n`);
         console.log("Wrote:", msg);
         res.end();
     });
