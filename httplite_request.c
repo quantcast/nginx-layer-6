@@ -149,7 +149,7 @@ void httplite_request_handler(ngx_event_t *rev) {
         return;
     }
 
-    if (c->close) {
+    if (c->close || c->read->pending_eof) {
         httplite_close_connection(c);
         return;
     }
