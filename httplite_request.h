@@ -8,8 +8,6 @@
 #include "httplite_upstream.h"
 
 #define SLAB_SIZE 1500                              /* MTU size */
-#define DEFAULT_SERVER_TIMEOUT          (60*1000)   /* Default timeout for server to be read ready */
-#define DEFAULT_CLIENT_WRITE_TIMEOUT    (60*1000)   /* Default timeout for server to be read ready */
 
 /**
  * @returns new httplite linked list of slabs, where each slab contains a

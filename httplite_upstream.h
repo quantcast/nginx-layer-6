@@ -9,6 +9,7 @@
 
 #include "httplite_upstream_module_configuration.h"
 
+#define DEFAULT_CLIENT_WRITE_TIMEOUT    (30*1000)   /* Default timeout for server to be write ready */
 #define MAX_RETRY_TIME 50000
 
 typedef struct httplite_request_slab_s {

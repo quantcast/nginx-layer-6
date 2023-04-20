@@ -234,7 +234,7 @@ void httplite_send_client_error_handler(ngx_event_t *wev) {
     }
 
     if (!wev->ready) {
-        ngx_add_timer(wev, 30000);
+        ngx_add_timer(wev, DEFAULT_CLIENT_WRITE_TIMEOUT);
         return;
     }
 
