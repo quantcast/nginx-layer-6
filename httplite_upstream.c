@@ -56,8 +56,8 @@ httplite_upstream_t *httplite_create_upstream(ngx_pool_t *pool, ngx_array_t *arr
     u->active = 0;
     u->busy = 0;
     u->keep_alive = 0;
-    u->timer = NULL;
-    u->data = ngx_pcalloc(u->pool, sizeof(httplite_event_data_t));
+    u->timer = ngx_pcalloc(pool, sizeof(ngx_event_t));
+    u->data = ngx_pcalloc(pool, sizeof(httplite_event_data_t));
 
     return u;
 }
@@ -118,10 +118,8 @@ int httplite_send_request_to_upstream(httplite_request_list_t *request) {
     u->request = request;
 
     // the connection is already established so we can delete the timer
-    if (u->timer) {
+    if (u->timer->timer_set) {
         ngx_del_timer(u->timer);
-        ngx_pfree(u->pool, u->timer);
-        u->timer = NULL;
     }
 
     if (peer_c->write->ready) {
@@ -148,13 +146,7 @@ int httplite_fetch_upstream_and_send_request(httplite_request_list_t *request) {
     ((httplite_event_data_t*)u->data)->client = client;
     ((httplite_event_data_t*)u->data)->upstream = u;
 
-    ngx_event_t *timer = ngx_pcalloc(u->pool, sizeof(ngx_event_t));
-    if (!timer) {
-        ngx_log_debug0(NGX_LOG_WARN, u->peer.log, 0, "unable to make timer");
-        return NGX_ERROR;
-    }
-
-    u->timer = timer;
+    ngx_event_t *timer = u->timer;
     timer->data = u->data;
     timer->handler = httplite_find_upstream_timeout_handler;
     timer->log = u->peer.log;
@@ -297,10 +289,8 @@ void httplite_keepalive_read_handler(ngx_event_t *rev) {
     
     // if we invoke this handler, then we have a valid connection
     // so we can delete the timer
-    if (u->timer) {
+    if (u->timer->timer_set) {
         ngx_del_timer(u->timer);
-        ngx_pfree(u->pool, u->timer);
-        u->timer = NULL;
     }
 }
 
@@ -340,10 +330,8 @@ void httplite_keepalive_write_handler(ngx_event_t *wev) {
 
     // if we invoke this handler, then we have a valid connection
     // so we can delete the timer
-    if (u->timer) {
+    if (u->timer->timer_set) {
         ngx_del_timer(u->timer);
-        ngx_pfree(u->pool, u->timer);
-        u->timer = NULL;
     }
 }
 
@@ -372,10 +360,8 @@ void httplite_upstream_read_handler(ngx_event_t *rev) {
 
     // if we invoke this handler, then we have a valid connection
     // so we can delete the timer
-    if (u->timer) {
+    if (u->timer->timer_set) {
         ngx_del_timer(u->timer);
-        ngx_pfree(u->pool, u->timer);
-        u->timer = NULL;
     }
 
     response = ngx_pcalloc(client->pool, sizeof(httplite_request_slab_t));
@@ -403,6 +389,7 @@ void httplite_upstream_read_handler(ngx_event_t *rev) {
         return;
     }
 
+    printf("sending the following response:\n%s\n\n", response->buffer_pos);
     int rc = client->send(client, response->buffer_pos, response->size);
 
     if (rc == NGX_AGAIN) {
@@ -468,20 +455,26 @@ void httplite_upstream_write_handler(ngx_event_t *wev) {
 
     // if we invoke this handler, then we have a valid connection
     // so we can delete the timer
-    if (u->timer) {
+    if (u->timer->timer_set) {
         ngx_del_timer(u->timer);
-        ngx_pfree(u->pool, u->timer);
-        u->timer = NULL;
     }
 
     list = u->request;
     r = list->curr;
     if (!r) {
+        TRACEME(
+            "  list: %p\n"
+            "  curr: %p\n"
+            "  u: %p\n\n",
+            list, r, u
+        );
         ngx_log_debug0(NGX_LOG_WARN, wev->log, 0, "found null request.");
         wev->handler = httplite_keepalive_write_handler;
         ngx_add_timer(wev, u->keep_alive);
         return;
     }
+
+    printf("sending the following request:\n%s\n\n", r->buffer_pos);
 
     n = c->send(c, r->buffer_pos, r->size);
 

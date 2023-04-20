@@ -12,8 +12,11 @@ http
       res.end();
     });
   })
-  .on("connection", () => {
+  .on("connection", (socket) => {
     console.log("Connection received");
+    socket.on('close', () => {
+      console.log('Connection closed...')
+    })
   })
   .listen(process.argv[2], () => {
     console.log("Ready to ping pong.");
