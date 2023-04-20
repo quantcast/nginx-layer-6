@@ -1,3 +1,4 @@
+import { AxiosError } from "axios";
 import { LoadBalancer } from "../helpers/load-balancer";
 import { NginxConfiguration } from "../models/nginx-configuration";
 
@@ -22,6 +23,17 @@ describe("Round Robin Load Balancer Test Suite", () => {
         for (let i = 0; i < details.length; i++) {
             expect(details[i].requests).toEqual(upstreams[i].connections);
         }
+    });
+
+    test("Should fail due to using more than the available connections", async () => {
+        const totalConnections = upstreams.reduce<number>(
+            (currentConnections, upstream) =>
+                currentConnections + upstream.connections,
+            0
+        );
+
+        const pingPromises = Promise.all(loadBalancer.ping(totalConnections + 1));
+        await expect(pingPromises).rejects.toThrowError(new AxiosError("Request failed with status code 500"));
     });
 
     test("Should load balance bursts of requests in parallel using all available connections", async () => {

@@ -53,13 +53,12 @@ export class LoadBalancer {
     }
 
     pingAllConnections(upstreams: HttpliteUpstreamServer[]) {
-        const requestPromises: Promise<AxiosResponse>[] = [];
-        for (let i = 0; i < upstreams.length; i++) {
-            for (let j = 0; j < upstreams[i].connections; j++) {
-                requestPromises.push(...this.ping());
-            }
-        }
-        return requestPromises;
+        const totalConnections = upstreams.reduce<number>(
+            (currentConnections, upstream) =>
+                currentConnections + upstream.connections,
+            0
+        );
+        return this.ping(totalConnections);
     }
 
     async close() {
