@@ -509,7 +509,7 @@ httplite_upstream_t *fetch_upstream(httplite_connection_pool_t *c_pool) {
         return (u->active && !u->busy) ? u : NULL;
     }
 
-    for (ngx_uint_t i = 1; i < num_upstreams; i++) {
+    for (ngx_uint_t i = 1; i <= num_upstreams; i++) {
         int upstream_index_to_check = (upstream_pool->upstream_index + i) % num_upstreams;
         httplite_upstream_t *upstream_to_check = &((httplite_upstream_t*)upstream_pool->upstreams->elts)[upstream_index_to_check];
         if (upstream_to_check->active && !upstream_to_check->busy) {
