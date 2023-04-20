@@ -8,7 +8,7 @@
 #include "httplite_upstream.h"
 #include "httplite_request_list.h"
 
-enum HTTP_method{ GET, POST };
+enum HTTP_method { GET, POST };
 
 /* Data about the connection that is maintained between calls to the request handler*/
 typedef struct httplite_client_data_s {
@@ -22,9 +22,6 @@ typedef struct httplite_client_data_s {
     size_t step_number;                             /* Keeps track of which step in the request parsing we are on */
     size_t pending_read_slabs;                      /* If this gets too large, shuts down the connection */
 } httplite_request_data_t;
-
-void httplite_request_handler(ngx_event_t *rev);
-void httplite_close_connection(ngx_connection_t *c);
 
 /* ------------------------------------------------------------------------------
                         Connection and upstream functions
