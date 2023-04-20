@@ -442,19 +442,21 @@ void httplite_upstream_read_handler(ngx_event_t *rev) {
 
 void httplite_upstream_write_handler(ngx_event_t *wev) {
     ngx_connection_t        *c;
+    httplite_event_data_t   *ev_data;
     httplite_request_list_t *list;
     httplite_request_slab_t *r;
     httplite_upstream_t     *u;
     int n;
 
     c = wev->data;
+    ev_data = c->data;
 
     if (httplite_check_broken_connection(c) != NGX_OK) {
         httplite_close_connection(c);
         return;
     }
 
-    u = ((httplite_event_data_t*) c->data)->upstream;
+    u = ev_data->upstream;
 
     if (wev->timedout) {
         ngx_log_debug1(NGX_LOG_INFO, c->log, 0, "timed out on connection %d.\n", ngx_event_ident(wev->data));
@@ -496,9 +498,13 @@ void httplite_upstream_write_handler(ngx_event_t *wev) {
     }
 
     list->curr = list->curr->next;
+    ngx_pfree(ev_data->client->pool, r->buffer_start);
+
     if (list->curr) {
         return;
     }
+
+    ngx_pfree(ev_data->client->pool, r);
 
     wev->handler = httplite_keepalive_write_handler;
     TRACEME(
