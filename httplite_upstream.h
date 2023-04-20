@@ -13,6 +13,9 @@
 #define DEFAULT_CLIENT_WRITE_TIMEOUT    (30*1000)   /* Default timeout for server to be write ready */
 #define MAX_RETRY_TIME 10000
 
+#define DEFAULT_CLIENT_WRITE_TIMEOUT    (30*1000)   /* Default timeout for server to be write ready */
+#define MAX_RETRY_TIME 10000
+
 typedef struct httplite_upstream_s {
     ngx_peer_connection_t       peer;
     ngx_pool_t                 *pool;

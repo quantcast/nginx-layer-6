@@ -3,11 +3,10 @@
 #include <ngx_string.h>
 #include <ngx_event.h>
 
+#include "httplite_server.h"
 #include "httplite_request.h"
 #include "httplite_upstream.h"
 #include "httplite_request_list.h"
-
-#define DEFAULT_SERVER_TIMEOUT 5000
 
 #define LENGTH_HEADER "\nContent-Length: "
 #define LENGTH_HEADER_SIZE strlen(LENGTH_HEADER)
@@ -22,8 +21,7 @@
 #define str3_cmp(m, c0, c1, c2)     (m[0] == c0 && m[1] == c1 && m[2] == c2)
 #define str4_cmp(m, c0, c1, c2, c3) (m[0] == c0 && m[1] == c1 && m[2] == c2 && m[3] == c3)
 
-void httplite_close_connection(ngx_connection_t *c)
-{
+void httplite_close_connection(ngx_connection_t *c) {
     ngx_pool_t  *pool;
 
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, c->log, 0,
@@ -35,7 +33,7 @@ void httplite_close_connection(ngx_connection_t *c)
 
     ngx_close_connection(c);
 
-    if (c->pool) {
+    if (pool) {
         ngx_destroy_pool(pool);
     }
 }
