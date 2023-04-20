@@ -30,6 +30,7 @@ typedef struct httplite_upstream_s {
     httplite_request_list_t    *request;
     httplite_request_slab_t    *response;
     ngx_event_t                *timer;
+    void                       *data;
     int                         keep_alive;
     int                         active;
     int                         busy;
@@ -46,8 +47,9 @@ ngx_int_t httplite_free_upstream(httplite_upstream_t* upstream);
 int httplite_check_broken_connection(ngx_connection_t *c);
 void httplite_deactivate_upstream(httplite_upstream_t *u);
 
-void httplite_refresh_upstream_connection(httplite_upstream_t *upstream, void *upstream_data);
 void httplite_send_request_to_upstream(httplite_request_list_t *request);
+void httplite_fetch_upstream_and_send_request(httplite_request_list_t *request);
+void httplite_refresh_upstream_connection(httplite_upstream_t *upstream);
 
 void httplite_send_client_error(ngx_event_t *wev);
 void httplite_find_upstream_timeout_handler(ngx_event_t *ev);

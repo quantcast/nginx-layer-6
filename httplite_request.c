@@ -199,15 +199,6 @@ void httplite_request_handler(ngx_event_t *rev) {
         n += m;
     }
 
-    httplite_event_data_t *ev_data = ngx_pcalloc(c->pool, sizeof(httplite_event_data_t));
-    if (!ev_data) {
-        fprintf(stderr, "Unable to instantiate httplite_event_data_t pointer.\n");
-        return;
-    }
-    ev_data->client = c;
-
-    c->data = ev_data;
-
     httplite_send_request_to_upstream(list);
 }
 

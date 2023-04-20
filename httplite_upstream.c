@@ -54,8 +54,8 @@ httplite_upstream_t *httplite_create_upstream(ngx_pool_t *pool, ngx_array_t *arr
     u->active = 0;
     u->busy = 0;
     u->keep_alive = 0;
-    ngx_pfree(u->pool, u->timer);
     u->timer = NULL;
+    u->data = ngx_pcalloc(u->pool, sizeof(httplite_event_data_t));
 
     return u;
 }
@@ -90,9 +90,6 @@ int httplite_check_broken_connection(ngx_connection_t *c) {
 }
 
 void httplite_deactivate_upstream(httplite_upstream_t *u) {
-    static int i = 0;
-    printf("[%s @ %s:%d]\n  deactivating upstream %p.\n  call #%d\n\n", __func__, __FILE__, __LINE__, u, ++i);
-
     if (!u) {
         printf("trying to free an upstream that is null.\n");
         return;
@@ -109,23 +106,86 @@ void httplite_deactivate_upstream(httplite_upstream_t *u) {
     httplite_close_connection(u->peer.connection);
 }
 
-void httplite_refresh_upstream_connection(httplite_upstream_t *u, void *data) {
+void httplite_send_request_to_upstream(httplite_request_list_t *request) {
+    ngx_connection_t *peer_c;
+
+    ngx_connection_t *client = request->connection;
+    httplite_upstream_configuration_t *cucf = httplite_get_upstream_conf(client);
+    httplite_upstream_t *u = fetch_upstream(cucf->connection_pool);
+    
+    if (u == NULL || ngx_event_ident(u->peer.connection) == -1) {
+        httplite_fetch_upstream_and_send_request(request);
+        return;
+    } 
+
+    peer_c = u->peer.connection;
+
+    ((httplite_event_data_t*)u->data)->client = client;
+    ((httplite_event_data_t*)u->data)->upstream = u;
+    peer_c->data = u->data;
+
+    u->busy = 1;
+    u->request = request;
+
+    // the connection is already established so we can delete the timer
+    if (u->timer) {
+        ngx_del_timer(u->timer);
+        ngx_pfree(u->pool, u->timer);
+        u->timer = NULL;
+    }
+
+    if (peer_c->write->ready) {
+        httplite_upstream_write_handler(peer_c->write);
+    } else {
+        peer_c->write->handler = httplite_upstream_write_handler;
+    }
+    peer_c->read->handler = httplite_upstream_read_handler;
+}
+
+void httplite_fetch_upstream_and_send_request(httplite_request_list_t *request) {
+    ngx_connection_t *client = request->connection;
+    httplite_upstream_configuration_t *cucf = httplite_get_upstream_conf(client);
+    httplite_upstream_t *u = httplite_fetch_inactive_upstream(cucf->connection_pool);
+
+    if (u == NULL)  {
+        printf("All connections are busy. Please try again later.\n");
+        httplite_send_client_error(client->write);
+        return;
+    }
+
+    ((httplite_event_data_t*)u->data)->client = client;
+    ((httplite_event_data_t*)u->data)->upstream = u;
+
+    ngx_event_t *timer = ngx_pcalloc(u->pool, sizeof(ngx_event_t));
+    if (!timer) {
+        ngx_log_debug0(NGX_LOG_WARN, u->peer.log, 0, "unable to make timer");
+        return;
+    }
+
+    timer->data = u->data;
+    timer->handler = httplite_find_upstream_timeout_handler;
+    timer->log = u->peer.log;
+    ngx_add_timer(timer, MAX_RETRY_TIME);
+
+    u->timer = timer;
+    u->busy = 1;
+    u->request = request;
+    u->keep_alive = cucf->keep_alive;
+
+    httplite_refresh_upstream_connection(u);
+}
+
+void httplite_refresh_upstream_connection(httplite_upstream_t *u) {
     // TODO: Add testing logic to check if the connection is already made
     ngx_int_t result = ngx_event_connect_peer(&u->peer);
-    ngx_event_t *wev = u->peer.connection->write;
-    ngx_event_t *rev = u->peer.connection->read;
+    ngx_connection_t *peer_c = u->peer.connection;
+    ngx_event_t *wev = peer_c->write;
+    ngx_event_t *rev = peer_c->read;
 
     if (result == NGX_AGAIN) {
         // if the upstream has a data field, then set the write handler to
         // the proper handler to forward connections
-        u->peer.connection->data = data;
-        printf(
-            "[%s @ %s:%d]\n"
-            "  creating upstream connection\n"
-            "  upstream in peer.connection->data: %p; actual upstream: %p\n"
-            "  connection data: %d (%p)\n\n", 
-            __func__, __FILE__, __LINE__, ((httplite_event_data_t*)u->peer.connection->data)->upstream, u, ngx_event_ident(u->peer.connection), u->peer.connection
-        );
+        peer_c->data = u->data;
 
         rev->handler = httplite_keepalive_read_handler;
         wev->handler = httplite_keepalive_write_handler;
@@ -142,65 +202,6 @@ void httplite_refresh_upstream_connection(httplite_upstream_t *u, void *data) {
         fprintf(stderr, "Something went wrong when creating connection.\n");
         ngx_pfree(u->pool, u);
     }
-}
-
-void httplite_send_request_to_upstream(httplite_request_list_t *request) {
-    ngx_connection_t *peer_c;
-
-    ngx_connection_t *client = request->connection;
-    httplite_upstream_configuration_t *cucf = httplite_get_upstream_conf(client);
-    httplite_upstream_t *u = fetch_upstream(cucf->connection_pool);
-    
-    if (u == NULL || ngx_event_ident(u->peer.connection) == -1) {
-        u = httplite_fetch_inactive_upstream(cucf->connection_pool);
-
-        if (u == NULL)  {
-            printf("All connections are busy. Please try again later.\n");
-            httplite_send_client_error(client->write);
-            return;
-        }
-
-        ngx_event_t *timer = ngx_pcalloc(u->pool, sizeof(ngx_event_t));
-        if (!timer) {
-            ngx_log_debug0(NGX_LOG_WARN, u->peer.log, 0, "unable to make timer");
-            return;
-        }
-
-        timer->data = client->data;
-        timer->handler = httplite_find_upstream_timeout_handler;
-        timer->log = u->peer.log;
-        ngx_add_timer(timer, MAX_RETRY_TIME);
-
-        ((httplite_event_data_t*)client->data)->upstream = u;
-        u->timer = timer;
-        u->busy = 1;
-        u->request = request;
-        u->keep_alive = cucf->keep_alive;
-
-        httplite_refresh_upstream_connection(u, client->data);
-        return;
-    } 
-
-    peer_c = u->peer.connection;
-
-    ((httplite_event_data_t*)client->data)->upstream = u;
-    u->busy = 1;
-    u->request = request;
-
-    // the connection is already established so we can delete the timer
-    if (u->timer) {
-        ngx_del_timer(u->timer);
-        ngx_pfree(u->pool, u->timer);
-        u->timer = NULL;
-    }
-
-    peer_c->data = client->data;
-    if (peer_c->write->ready) {
-        httplite_upstream_write_handler(peer_c->write);
-    } else {
-        peer_c->write->handler = httplite_upstream_write_handler;
-    }
-    peer_c->read->handler = httplite_upstream_read_handler;
 }
 
 void httplite_send_client_error(ngx_event_t *wev) {
@@ -237,9 +238,6 @@ void httplite_find_upstream_timeout_handler(ngx_event_t *ev) {
     ngx_connection_t *peer_c = u->peer.connection;
     ngx_connection_t *client = ev_data->client;
 
-    ngx_pfree(u->pool, u->timer);
-    u->timer = NULL;
-
     ngx_log_debug0(NGX_LOG_WARN, u->pool->log, 0, "reached max timeout for finding upstream. dropping request");
 
     // remove the write event keep alive
@@ -261,6 +259,9 @@ void httplite_find_upstream_timeout_handler(ngx_event_t *ev) {
 
     client->data = HTTP_503_RESPONSE;
     client->write->handler = httplite_send_client_error;
+
+    ngx_pfree(u->pool, u->timer);
+    u->timer = NULL;
 }
 
 void httplite_keepalive_read_handler(ngx_event_t *rev) {
@@ -307,14 +308,6 @@ void httplite_keepalive_write_handler(ngx_event_t *wev) {
     if (wev->timedout) {
         wev->timedout = 0;
         ngx_log_debug2(NGX_LOG_INFO, c->log, 0, "keep alive time out has been hit on write event: %d (%p). closing connection\n", ngx_event_ident(wev->data), wev->data);
-
-        printf(
-            "[%s @ %s:%d]\n"
-            "  keep alive time out has been hit on write event: %d (%p)\n"
-            "  upstream in connection->data: %p\n"
-            "  closing connection.\n\n", 
-            __func__, __FILE__, __LINE__, ngx_event_ident(wev->data), wev->data, u
-        );
         fflush(stdin);
 
         httplite_deactivate_upstream(u);
@@ -441,14 +434,6 @@ void httplite_upstream_write_handler(ngx_event_t *wev) {
 
     u = ((httplite_event_data_t*) c->data)->upstream;
 
-    printf(
-        "[%s @ %s:%d]\n"
-        "  upstream write handler called\n"
-        "  connection id: %d (%p)\n"
-        "  connection->data: %p\n\n",
-        __func__, __FILE__, __LINE__, ngx_event_ident(u->peer.connection), u->peer.connection, u
-    );
-
     if (wev->timedout) {
         printf("timed out on %d!\n", ngx_event_ident(wev->data));
         httplite_deactivate_upstream(u);
@@ -484,13 +469,6 @@ void httplite_upstream_write_handler(ngx_event_t *wev) {
     list->curr = list->curr->next;
     if (!list->curr) {
         wev->handler = httplite_keepalive_write_handler;
-        printf(
-            "[%s @ %s:%d]\n"
-            "  exiting upstream write handler\n"
-            "  connection id: %d (%p)\n"
-            "  connection->data: %p\n\n",
-            __func__, __FILE__, __LINE__, ngx_event_ident(u->peer.connection), u->peer.connection, ((httplite_event_data_t*)(u->peer.connection->data))->upstream
-        );
         ngx_add_timer(wev, u->keep_alive);
         return;
     }

@@ -11,13 +11,6 @@
 #define DEFAULT_SERVER_TIMEOUT          (60*1000)   /* Default timeout for server to be read ready */
 #define DEFAULT_CLIENT_WRITE_TIMEOUT    (60*1000)   /* Default timeout for server to be read ready */
 
-typedef struct {
-    ngx_connection_t *client_connection;
-    ngx_connection_t *upstream_connection;
-    httplite_request_slab_t *request;
-    httplite_request_slab_t *response;
-} httplite_event_connection_t;
-
 /**
  * @returns new httplite linked list of slabs, where each slab contains a
  * pointer to a SLAB_SIZE string buffer, using the given connection.
