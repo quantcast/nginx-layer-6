@@ -322,6 +322,7 @@ void httplite_keepalive_write_handler(ngx_event_t *wev) {
 
     if (wev->timedout) {
         wev->timedout = 0;
+        printf("Timed out\n");
         ngx_log_debug2(NGX_LOG_INFO, c->log, 0, "keep alive time out has been hit on write event: %d (%p). closing connection\n", ngx_event_ident(wev->data), wev->data);
         printf("timed out\n");
         fflush(stdin);

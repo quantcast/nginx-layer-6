@@ -1,20 +1,23 @@
 const http = require("http");
 
-http
-  .createServer((req, res) => {
-    let msg = ""
+http.createServer((req, res) => {
+    let msg = "";
     req.on("data", (chunk) => {
-      console.log(`chunk: ${chunk}`);
-      msg = chunk
+        msg += chunk;
     });
     req.on("end", () => {
-      res.write(`${msg}\n`);
-      res.end();
+        res.write(`${msg}\n`);
+        res.end();
     });
-  })
-  .on("connection", () => {
-    console.log("Connection received");
-  })
-  .listen(process.argv[2], () => {
-    console.log("Ready to ping pong.");
-  });
+})
+    .on("connection", (socket) => {
+        console.log("Connection received");
+        console.log("open", new Date());
+        socket.on("close", () => {
+            console.log("closed socket");
+            console.log("close", new Date());
+        });
+    })
+    .listen(process.argv[2], () => {
+        console.log("Ready to ping pong.");
+    });

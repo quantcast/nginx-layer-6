@@ -1,3 +1,4 @@
-npm i
+#!/bin/bash
 
+npm i
 npm t

@@ -1,0 +1,14 @@
+{
+  "files.associations": {
+    "*.heex": "phoenix-heex",
+    "httplite_upstream.h": "c",
+    "httplite_request.h": "c",
+    "httplite_load_balancer.h": "c",
+    "httplite_upstream_module_configuration.h": "c",
+    "ios": "c",
+    "httplite_module.h": "c",
+    "nginx.h": "c",
+    "ngx_core.h": "c",
+    "httplite_module_configuration.h": "c"
+  }
+}
