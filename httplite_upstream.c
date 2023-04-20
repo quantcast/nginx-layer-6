@@ -10,7 +10,7 @@
 #define HTTPLITE_TRACE_ON 0
 #define TRACEME(fmt, ...) if (HTTPLITE_TRACE_ON) printf("[%s @ %s:%d]\n"fmt, __func__, __FILE__, __LINE__, __VA_ARGS__)
 
-static void httplite_empty_handler() {}
+void httplite_empty_handler() {}
 
 httplite_upstream_t *httplite_create_upstream(ngx_pool_t *pool, ngx_array_t *arr, char *address, ngx_int_t port) {
     httplite_upstream_t *u;
@@ -62,20 +62,6 @@ httplite_upstream_t *httplite_create_upstream(ngx_pool_t *pool, ngx_array_t *arr
     return u;
 }
 
-ngx_int_t httplite_free_upstream(httplite_upstream_t* u) {
-    ngx_pfree(u->pool, u->peer.name->data);
-    ngx_pfree(u->pool, u->peer.name);
-
-    if (ngx_pfree(u->pool, u) != NGX_OK) {
-        fprintf(stderr, "Failed to deallocate httplite upstream\n");
-        return NGX_DECLINED;
-    }
-
-    httplite_deactivate_upstream(u);
-
-    return NGX_OK;
-}
-
 int httplite_check_broken_connection(ngx_connection_t *c) {
     ngx_event_t *rev = c->read;
 
@@ -111,7 +97,7 @@ void httplite_deactivate_upstream(httplite_upstream_t *u) {
     httplite_close_connection(u->peer.connection);
 }
 
-void httplite_send_request_to_upstream(httplite_request_list_t *request) {
+int httplite_send_request_to_upstream(httplite_request_list_t *request) {
     ngx_connection_t *peer_c;
 
     ngx_connection_t *client = request->connection;
@@ -119,8 +105,7 @@ void httplite_send_request_to_upstream(httplite_request_list_t *request) {
     httplite_upstream_t *u = fetch_upstream(cucf->connection_pool);
     
     if (u == NULL || ngx_event_ident(u->peer.connection) == -1) {
-        httplite_fetch_upstream_and_send_request(request);
-        return;
+        return httplite_fetch_upstream_and_send_request(request);
     }
 
     peer_c = u->peer.connection;
@@ -145,18 +130,19 @@ void httplite_send_request_to_upstream(httplite_request_list_t *request) {
         peer_c->write->handler = httplite_upstream_write_handler;
     }
     peer_c->read->handler = httplite_upstream_read_handler;
+
+    return NGX_OK;
 }
 
-void httplite_fetch_upstream_and_send_request(httplite_request_list_t *request) {
+int httplite_fetch_upstream_and_send_request(httplite_request_list_t *request) {
     ngx_connection_t *client = request->connection;
     httplite_upstream_configuration_t *cucf = httplite_get_upstream_conf(client);
     httplite_upstream_t *u = httplite_fetch_inactive_upstream(cucf->connection_pool);
 
     if (u == NULL)  {
-        printf("All connections are busy. Please try again later.\n");
-        ngx_log_debug0(NGX_LOG_WARN, client->log, 0, "All connections are busy. Please try again later.\n");
-        httplite_send_client_error(client, HTTP_503_RESPONSE);
-        return;
+        printf("all connections are busy. will try to send request later.\n");
+        ngx_log_debug0(NGX_LOG_WARN, client->log, 0, "all connections are busy. will try to send request later\n");
+        return NGX_ERROR;
     }
 
     ((httplite_event_data_t*)u->data)->client = client;
@@ -165,7 +151,7 @@ void httplite_fetch_upstream_and_send_request(httplite_request_list_t *request) 
     ngx_event_t *timer = ngx_pcalloc(u->pool, sizeof(ngx_event_t));
     if (!timer) {
         ngx_log_debug0(NGX_LOG_WARN, u->peer.log, 0, "unable to make timer");
-        return;
+        return NGX_ERROR;
     }
 
     u->timer = timer;
@@ -181,10 +167,10 @@ void httplite_fetch_upstream_and_send_request(httplite_request_list_t *request) 
     u->request = request;
     u->keep_alive = cucf->keep_alive;
 
-    httplite_refresh_upstream_connection(u);
+    return httplite_refresh_upstream_connection(u);
 }
 
-void httplite_refresh_upstream_connection(httplite_upstream_t *u) {
+int httplite_refresh_upstream_connection(httplite_upstream_t *u) {
     // TODO: Add testing logic to check if the connection is already made
     ngx_int_t result = ngx_event_connect_peer(&u->peer);
     ngx_connection_t *peer_c = u->peer.connection;
@@ -217,7 +203,10 @@ void httplite_refresh_upstream_connection(httplite_upstream_t *u) {
     if (result != NGX_OK && result != NGX_AGAIN) {
         fprintf(stderr, "Something went wrong when creating connection.\n");
         ngx_pfree(u->pool, u);
+        return NGX_ERROR;
     }
+
+    return NGX_OK;
 }
 
 void httplite_send_client_error(ngx_connection_t *client, char *message) {
@@ -395,14 +384,15 @@ void httplite_upstream_read_handler(ngx_event_t *rev) {
         return;
     }
 
-    response->buffer = ngx_pnalloc(client->pool, SLAB_SIZE);
-    if (!response->buffer) {
+    response->buffer_start = ngx_pnalloc(client->pool, SLAB_SIZE);
+    if (!response->buffer_start) {
         fprintf(stderr, "Unable to initialize buffer space in httplite_upstream_read_handler.\n");
         return;
     }
+    response->buffer_pos = response->buffer_start;
 
     // read the content from the upstream and store it on the current connection so as to prevent blocking on the upstream connection
-    n = c->recv(c, response->buffer, SLAB_SIZE);
+    n = c->recv(c, response->buffer_pos, SLAB_SIZE);
     response->size += n;
 
     u->response = response;
@@ -413,7 +403,7 @@ void httplite_upstream_read_handler(ngx_event_t *rev) {
         return;
     }
 
-    int rc = client->send(client, response->buffer, response->size);
+    int rc = client->send(client, response->buffer_pos, response->size);
 
     if (rc == NGX_AGAIN) {
         // data was only partially sent, add write event
@@ -430,7 +420,7 @@ void httplite_upstream_read_handler(ngx_event_t *rev) {
 
     // data was fully sent, check if there's more to send
     if (rc < (int) response->size) {
-        response->buffer += rc;
+        response->buffer_pos += rc;
         response->size -= rc;
         ngx_handle_write_event(client->write, 0);
         return;
@@ -484,8 +474,14 @@ void httplite_upstream_write_handler(ngx_event_t *wev) {
 
     list = u->request;
     r = list->curr;
+    if (!r) {
+        ngx_log_debug0(NGX_LOG_WARN, wev->log, 0, "found null request.");
+        wev->handler = httplite_keepalive_write_handler;
+        ngx_add_timer(wev, u->keep_alive);
+        return;
+    }
 
-    n = c->send(c, r->buffer, r->size);
+    n = c->send(c, r->buffer_pos, r->size);
 
     if (n == NGX_ERROR) {
         ngx_log_error(NGX_LOG_WARN, wev->log, 0, "unable to send request to upstream %s!", u->peer.name->data);
@@ -494,7 +490,8 @@ void httplite_upstream_write_handler(ngx_event_t *wev) {
     }
 
     if (n != (int) r->size) {
-        list->curr->buffer += n;
+        list->curr->buffer_pos += n;
+        list->curr->size -= n;
         return;
     }
 
