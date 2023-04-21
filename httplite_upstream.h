@@ -11,10 +11,7 @@
 #include "httplite_request_list.h"
 
 #define DEFAULT_CLIENT_WRITE_TIMEOUT    (30*1000)   /* Default timeout for server to be write ready */
-#define MAX_RETRY_TIME 10000
-
-#define DEFAULT_CLIENT_WRITE_TIMEOUT    (30*1000)   /* Default timeout for server to be write ready */
-#define MAX_RETRY_TIME 10000
+#define MAX_RETRY_TIME                  10000
 
 typedef struct httplite_upstream_s {
     ngx_peer_connection_t       peer;
@@ -25,6 +22,7 @@ typedef struct httplite_upstream_s {
     void                       *data;
     int                         keep_alive;
     int                         active;
+    int                         pending_active;
     int                         busy;
 } httplite_upstream_t;
 
