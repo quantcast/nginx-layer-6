@@ -59,6 +59,8 @@ httplite_upstream_t *httplite_create_upstream(ngx_pool_t *pool, ngx_array_t *arr
     u->pending_active = 0;
     u->busy = 0;
     u->keep_alive = 0;
+    u->request = NULL;
+    u->response = NULL;
     u->timer = ngx_pcalloc(pool, sizeof(ngx_event_t));
     u->data = ngx_pcalloc(pool, sizeof(httplite_event_data_t));
 
@@ -128,6 +130,7 @@ int httplite_send_request_to_upstream(httplite_request_list_t *request) {
     ((httplite_event_data_t*)u->data)->upstream = u;
     peer_c->data = u->data;
 
+    u->pending_active = 0;
     u->busy = 1;
     u->request = request;
 
@@ -150,29 +153,6 @@ int httplite_send_request_to_upstream(httplite_request_list_t *request) {
     peer_c->read->handler = httplite_upstream_read_handler;
 
     return NGX_OK;
-}
-
-void print_upstream_statuses(httplite_connection_pool_t *c_pool) {
-    httplite_upstream_pool_t *curr_upstream_pool;
-    httplite_upstream_t *curr_upstream;
-
-    ngx_uint_t num_upstream_pools, num_upstreams;
-
-    num_upstream_pools = c_pool->upstream_pools->nelts;
-    
-    for (ngx_uint_t i = 0; i < num_upstream_pools; i++) {
-        curr_upstream_pool = &((httplite_upstream_pool_t*)(c_pool->upstream_pools->elts))[i];
-        num_upstreams = curr_upstream_pool->upstreams->nelts;
-        printf("upstream pool: %p\n", curr_upstream_pool);
-        for (ngx_uint_t j = 0; j < num_upstreams; j++) {
-            curr_upstream = &((httplite_upstream_t*)(curr_upstream_pool->upstreams->elts))[j];
-            printf(
-                "upstream: %p\nactive? %d\npending active? %d\nbusy? %d\n",
-                curr_upstream, curr_upstream->active, curr_upstream->pending_active, curr_upstream->busy
-            );
-        }
-        printf("\n");
-    }
 }
 
 int httplite_fetch_upstream_and_send_request(httplite_request_list_t *request) {
@@ -203,7 +183,7 @@ int httplite_fetch_upstream_and_send_request(httplite_request_list_t *request) {
     // TODO: This timer does not fire when exhausted.
     ngx_add_timer(timer, MAX_RETRY_TIME);
 
-    u->busy = 1;
+    u->pending_active = 1;
     u->request = request;
     u->keep_alive = cucf->keep_alive;
 
@@ -222,8 +202,6 @@ int httplite_refresh_upstream_connection(httplite_upstream_t *u) {
     ngx_connection_t *peer_c = u->peer.connection;
     ngx_event_t *wev = peer_c->write;
     ngx_event_t *rev = peer_c->read;
-
-    u->pending_active = 1;
 
     if (result == NGX_AGAIN) {
         // if the upstream has a data field, then set the write handler to
@@ -250,7 +228,6 @@ int httplite_refresh_upstream_connection(httplite_upstream_t *u) {
 
     if (result != NGX_OK && result != NGX_AGAIN) {
         fprintf(stderr, "Something went wrong when creating connection.\n");
-        ngx_pfree(u->pool, u);
         return NGX_ERROR;
     }
 
@@ -351,6 +328,8 @@ void httplite_keepalive_read_handler(ngx_event_t *rev) {
         return;
     }
 
+    u->pending_active = 0;
+    u->busy = 0;
     
     // if we invoke this handler, then we have a valid connection
     // so we can delete the timer
@@ -377,7 +356,6 @@ void httplite_keepalive_write_handler(ngx_event_t *wev) {
     }
 
     if (wev->timedout) {
-        wev->timedout = 0;
         ngx_log_debug2(NGX_LOG_INFO, c->log, 0, "keep alive time out has been hit on write event: %d (%p). closing connection\n", ngx_event_ident(wev->data), wev->data);
         TRACEME(
             "  creating upstream connection\n"
@@ -390,8 +368,9 @@ void httplite_keepalive_write_handler(ngx_event_t *wev) {
         return;
     }
 
-    u->pending_active = 0;
     u->active = 1;
+    u->pending_active = 0;
+    u->busy = 0;
 
     // if we invoke this handler, then we have a valid connection
     // so we can delete the timer
@@ -440,6 +419,9 @@ void httplite_upstream_read_handler(ngx_event_t *rev) {
     if (u->timer->timer_set) {
         ngx_del_timer(u->timer);
     }
+
+    u->active = 1;
+    u->pending_active = 0;
 
     response = ngx_pcalloc(client->pool, sizeof(httplite_request_slab_t));
     if (!response) {
