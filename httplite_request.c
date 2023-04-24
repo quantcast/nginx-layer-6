@@ -58,6 +58,12 @@ void httplite_request_handler(ngx_event_t *rev) {
 
     c = rev->data;
 
+    if (httplite_check_broken_connection(c) != NGX_OK) {
+        ngx_log_debug0(NGX_LOG_WARN, c->log, 0, "Client was closed.");
+        httplite_close_connection(c);
+        return;
+    }
+
     if (!c->data) {
         httplite_request_data_t *new_request_data = ngx_pcalloc(c->pool, sizeof(httplite_request_data_t));
         if (!new_request_data) {

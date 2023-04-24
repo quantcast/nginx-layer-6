@@ -22,6 +22,7 @@ typedef struct httplite_upstream_s {
     void                       *data;
     int                         keep_alive;
     int                         active;
+    int                         pending_active;
     int                         busy;
 } httplite_upstream_t;
 

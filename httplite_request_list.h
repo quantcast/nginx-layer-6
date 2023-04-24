@@ -23,9 +23,13 @@ typedef struct httplite_request_list_s {
 
 httplite_request_list_t *httplite_init_list(ngx_connection_t *connection);
 httplite_request_list_t *httplite_add_list_to_chain(httplite_request_list_t *list, ngx_connection_t *c);
-httplite_request_list_t *httplite_advance_list(httplite_request_list_t *list);
 httplite_request_slab_t *httplite_add_slab(httplite_request_list_t *list);
+
+httplite_request_list_t *httplite_advance_list(httplite_request_list_t *list);
+
+void httplite_free_slab(ngx_connection_t *c, httplite_request_slab_t *slab);
 void httplite_free_list(httplite_request_list_t *list);
+
 void httplite_copy_to_list(
     httplite_request_list_t *write_list,
     size_t read_size,

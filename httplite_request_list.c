@@ -75,13 +75,18 @@ httplite_request_list_t *httplite_advance_list(httplite_request_list_t *list) {
     return list->next;
 }
 
+void httplite_free_slab(ngx_connection_t *c, httplite_request_slab_t *slab) {
+    ngx_pfree(c->pool, slab->buffer_start);
+    ngx_pfree(c->pool, slab);
+}
+
 void httplite_free_list(httplite_request_list_t *list) {
     httplite_request_slab_t *slab;
     slab = list->head;
     while (slab) {
-        void *free = slab;
+        httplite_request_slab_t *free = slab;
         slab = slab->next;
-        ngx_pfree(list->connection->pool, free);
+        httplite_free_slab(list->connection, free);
     }
 
     ngx_pfree(list->connection->pool, list);
