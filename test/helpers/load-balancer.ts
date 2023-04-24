@@ -10,10 +10,12 @@ export class LoadBalancer {
     private servers: MockServer[];
     private nginxConfigurationService: NginxConfigurationService;
     private configurationPath: string | null;
+    private verbose: boolean;
 
-    constructor() {
+    constructor(verbose: boolean = false) {
+        this.verbose = verbose;
         this.nginxConfigurationService = new NginxConfigurationService();
-        this.loadBalancerProcess = new LoadBalancerProcess();
+        this.loadBalancerProcess = new LoadBalancerProcess(verbose);
         this.servers = [];
         this.configurationPath = null;
     }
@@ -31,7 +33,7 @@ export class LoadBalancer {
     }
 
     private createServers(servers: HttpliteUpstreamServer[]) {
-        return servers.map((server) => new MockServer(server.port));
+        return servers.map((server) => new MockServer(server.port, this.verbose));
     }
 
     getUpstreamDetails() {
