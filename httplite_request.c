@@ -57,6 +57,8 @@ void httplite_request_handler(ngx_event_t *rev) {
 
     c = rev->data;
 
+    printf("recieved new connection with pool: %p\n", c->pool);
+
     if (httplite_check_broken_connection(c) != NGX_OK) {
         ngx_log_debug0(NGX_LOG_WARN, c->log, 0, "Client was closed.");
         httplite_close_connection(c);

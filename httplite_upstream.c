@@ -423,6 +423,7 @@ void httplite_upstream_read_handler(ngx_event_t *rev) {
     u->active = 1;
     u->pending_active = 0;
 
+    printf("trying to allocate to client->pool: %p\n", client->pool);
     response = ngx_pcalloc(client->pool, sizeof(httplite_request_slab_t));
     if (!response) {
         fprintf(stderr, "Unable to initialize response slab in httplite_upstream_read_handler.\n");
