@@ -16,6 +16,8 @@
 
 #define HTTP_411_RESPONSE "HTTP/1.1 411 Length Required\r\nCache-Control: no-cache, private\r\n\r\n"
 
+#define READ_RETRY_TIME 1000
+
 #define READ_SLAB_MAX 5
 
 #define str3_cmp(m, c0, c1, c2)     (m[0] == c0 && m[1] == c1 && m[2] == c2)
@@ -94,7 +96,7 @@ void httplite_request_handler(ngx_event_t *rev) {
         }
 
         httplite_send_request_list(request_data);
-        ngx_add_timer(rev, DEFAULT_SERVER_TIMEOUT);
+        ngx_add_timer(rev, READ_RETRY_TIME);
     }
 
     read_list = request_data->read_list;
@@ -119,7 +121,7 @@ void httplite_request_handler(ngx_event_t *rev) {
     httplite_send_request_list(request_data);
 
     if (request_data->write_list != request_data->write_list_tail) {
-        ngx_add_timer(rev, DEFAULT_SERVER_TIMEOUT);
+        ngx_add_timer(rev, READ_RETRY_TIME);
     }
 }
 
