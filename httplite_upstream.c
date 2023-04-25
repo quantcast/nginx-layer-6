@@ -71,7 +71,7 @@ httplite_upstream_t *httplite_create_upstream(ngx_pool_t *pool, ngx_array_t *arr
 int httplite_check_broken_connection(ngx_connection_t *c) {
     ngx_event_t *rev = c->read;
 
-    if (!rev->pending_eof) {
+    if (!rev->pending_eof && !c->destroyed) {
         return NGX_OK;
     }
 
