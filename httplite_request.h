@@ -21,14 +21,14 @@ typedef struct httplite_client_data_s {
     size_t bytes_remaining;                         /* For the current request, how many bytes are left to be copied */
     size_t step_number;                             /* Keeps track of which step in the request parsing we are on */
     size_t pending_read_slabs;                      /* If this gets too large, shuts down the connection */
-} httplite_request_data_t;
+} httplite_client_data_t;
 
 /* ------------------------------------------------------------------------------
                         Connection and upstream functions
    ---------------------------------------------------------------------------- */
 void httplite_request_handler(ngx_event_t *rev);
 void httplite_close_connection(ngx_connection_t *c);
-void httplite_send_request_list(httplite_request_data_t *request_data);
+void httplite_send_request_list(httplite_client_data_t *request_data);
 
 /* ------------------------------------------------------------------------------
                             Request splitting function
@@ -38,7 +38,7 @@ void httplite_send_request_list(httplite_request_data_t *request_data);
 * populates them as nodes in write_list
 * there will always be one empty node at the end of write list
 */
-void httplite_split_request(httplite_request_data_t *request_data, ngx_connection_t *c);
+void httplite_split_request(httplite_client_data_t *request_data, ngx_connection_t *c);
 
 /* ------------------------------------------------------------------------------
                                 Testing functions

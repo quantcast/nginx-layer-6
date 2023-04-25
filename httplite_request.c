@@ -16,6 +16,7 @@
 
 #define HTTP_411_RESPONSE "HTTP/1.1 411 Length Required\r\nCache-Control: no-cache, private\r\n\r\n"
 
+#define RETRY_READ_TIME 1000
 #define READ_SLAB_MAX 5
 
 #define str3_cmp(m, c0, c1, c2)     (m[0] == c0 && m[1] == c1 && m[2] == c2)
@@ -50,13 +51,25 @@ void *httplite_calloc(ngx_pool_t *pool, size_t size) {
 
 void httplite_request_handler(ngx_event_t *rev) {
     ngx_connection_t *c;
-    httplite_request_data_t *request_data;
+    httplite_client_data_t *request_data;
     httplite_request_list_t *read_list;
     httplite_request_slab_t *next_slab;
 
     c = rev->data;
+
+    if (c->destroyed) {
+        ngx_log_debug0(NGX_LOG_ALERT, c->log, 0, "trying to access closed connection.");
+        return;
+    }
+
+    if (httplite_check_broken_connection(c) != NGX_OK) {
+        ngx_log_debug0(NGX_LOG_WARN, c->log, 0, "Client was closed.");
+        httplite_close_connection(c);
+        return;
+    }
+
     if (!c->data) {
-        httplite_request_data_t *new_request_data = ngx_pcalloc(c->pool, sizeof(httplite_request_data_t));
+        httplite_client_data_t *new_request_data = ngx_pcalloc(c->pool, sizeof(httplite_client_data_t));
         if (!new_request_data) {
             return;
         }
@@ -92,7 +105,7 @@ void httplite_request_handler(ngx_event_t *rev) {
         }
 
         httplite_send_request_list(request_data);
-        ngx_add_timer(rev, DEFAULT_SERVER_TIMEOUT);
+        ngx_add_timer(rev, RETRY_READ_TIME);
     }
 
     read_list = request_data->read_list;
@@ -101,10 +114,11 @@ void httplite_request_handler(ngx_event_t *rev) {
         return;
     }
 
-    if (request_data->pending_read_slabs >= READ_SLAB_MAX) {
-        httplite_close_connection(c);
-        return;
-    }
+    // TODO: fix this functionality - create limit for how many unread slabs are allowed
+    // if (request_data->pending_read_slabs >= READ_SLAB_MAX) {
+    //     httplite_close_connection(c);
+    //     return;
+    // }
 
     if (rev->ready) {
         read_list->tail->size = c->recv(c, read_list->tail->buffer_start, SLAB_SIZE);
@@ -117,11 +131,11 @@ void httplite_request_handler(ngx_event_t *rev) {
     httplite_send_request_list(request_data);
 
     if (request_data->write_list != request_data->write_list_tail) {
-        ngx_add_timer(rev, DEFAULT_SERVER_TIMEOUT);
+        ngx_add_timer(rev, RETRY_READ_TIME);
     }
 }
 
-void httplite_send_request_list(httplite_request_data_t *request_data) {
+void httplite_send_request_list(httplite_client_data_t *request_data) {
     int send_failed = 0;
     httplite_request_list_t *write_list = request_data->write_list;
 
@@ -139,7 +153,7 @@ void httplite_send_request_list(httplite_request_data_t *request_data) {
     }
 }
 
-void httplite_split_request(httplite_request_data_t *request_data, ngx_connection_t *c) {
+void httplite_split_request(httplite_client_data_t *request_data, ngx_connection_t *c) {
 
     httplite_request_slab_t *read_slab = request_data->read_list->tail;
 
