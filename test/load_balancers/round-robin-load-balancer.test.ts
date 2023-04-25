@@ -1,4 +1,3 @@
-import { AxiosError } from "axios";
 import { LoadBalancer } from "../helpers/load-balancer";
 import { NginxConfiguration } from "../models/nginx-configuration";
 

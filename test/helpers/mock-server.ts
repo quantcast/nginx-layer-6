@@ -3,20 +3,46 @@ import { ServerDetails } from "./server-details";
 import { ConnectionDetails } from "./connection-details";
 import { Socket } from "net";
 
+type RequestHandler = (
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    server: MockServer
+) => void;
+
 export class MockServer {
     private server: http.Server | null;
     private port: number;
     private details: ServerDetails;
     private verbose: boolean;
+    private requestHandler: RequestHandler;
 
     constructor(port: number, verbose: boolean = false) {
         this.port = port;
         this.verbose = verbose;
         this.details = new ServerDetails();
+        this.requestHandler = this.defaultRequestHandler;
     }
 
     getDetails() {
         return this.details;
+    }
+
+    onRequest(handler: RequestHandler) {
+        this.requestHandler = handler;
+    }
+
+    private defaultRequestHandler(
+        req: http.IncomingMessage,
+        res: http.ServerResponse
+    ) {
+        let msg = "";
+        req.on("data", (chunk) => {
+            msg += chunk;
+        });
+        req.on("end", () => {
+            res.write(`${msg}\n`);
+            res.end();
+        });
     }
 
     open() {
@@ -24,14 +50,7 @@ export class MockServer {
             this.server = http
                 .createServer((req, res) => {
                     this.details.requests++;
-                    let msg = "";
-                    req.on("data", (chunk) => {
-                        msg += chunk;
-                    });
-                    req.on("end", () => {
-                        res.write(`${msg}\n`);
-                        res.end();
-                    });
+                    this.requestHandler(req, res, this);
                 })
                 .on("listening", () => resolve())
                 .on("error", (error) => this.handleError(reject, error))
