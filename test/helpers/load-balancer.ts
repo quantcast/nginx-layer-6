@@ -33,14 +33,20 @@ export class LoadBalancer {
     }
 
     private createServers(servers: HttpliteUpstreamServer[]) {
-        return servers.map((server) => new MockServer(server.port, this.verbose));
+        return servers.map(
+            (server) => new MockServer(server.port, this.verbose)
+        );
+    }
+
+    getServers() {
+        return this.servers;
     }
 
     getUpstreamDetails() {
         return this.servers.map((server) => server.getDetails());
     }
 
-    ping(n: number = 1) {
+    ping(n: number = 1, abortController?: AbortController) {
         const requestPromises: Promise<AxiosResponse>[] = [];
         for (let i = 0; i < n; i++) {
             requestPromises.push(
@@ -48,6 +54,9 @@ export class LoadBalancer {
                     headers: {
                         Connection: "keep-alive",
                     },
+                    signal: abortController
+                        ? abortController.signal
+                        : undefined,
                 })
             );
         }
