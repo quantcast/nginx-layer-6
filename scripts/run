@@ -37,7 +37,7 @@ while [[ $# -gt 0 ]]; do
             VERBOSE=1
             shift
             ;;
-        --nginx-config)
+        -f|--nginx-config)
             shift
             NGINX_CONFIG_PATH=$1
             shift
@@ -61,12 +61,13 @@ while [[ $# -gt 0 ]]; do
             ;;
         -h|--help|-*|--*)
             echo 'Usage: ./run [options]'
-            echo "    --configure (-c) - Reconfigures nginx"
-            echo "    --debug     (-d) - Makes nginx and opens in lldb debugger"
-            echo "    --module    (-m) - Either the absolute path to the module or the relative path from nginx to the module (default \"../nginx-layer-6\")"
-            echo "    --preserve  (-p) - Preserve the out/ directory (does not delete between runs)"
-            echo "    --verbose   (-v) - Shows the make output"
-            echo "    --quiet     (-q) - Silence all output"
+            echo "    --configure    (-c) - Reconfigures nginx"
+            echo "    --nginx-config (-f) - Defines the nginx config file to use"
+            echo "    --debug        (-d) - Makes nginx and opens in lldb debugger"
+            echo "    --module       (-m) - Either the absolute path to the module or the relative path from nginx to the module (default \"../nginx-layer-6\")"
+            echo "    --preserve     (-p) - Preserve the out/ directory (does not delete between runs)"
+            echo "    --verbose      (-v) - Shows the make output"
+            echo "    --quiet        (-q) - Silence all output"
             shift
             exit 0
             ;;
