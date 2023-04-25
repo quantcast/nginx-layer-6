@@ -15,7 +15,6 @@ const server = http
     });
   }).on("connection", (socket) => {
     console.log(`Connection created with keep-alive ${KEEP_ALIVE} at time: ${new Date().toISOString()}`);
-    // socket.setTimeout(KEEP_ALIVE);
     socket.on('close', () => {
       console.log(`Connection closing at time: ${new Date().toISOString()}`)
     })

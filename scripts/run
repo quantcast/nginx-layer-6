@@ -1,3 +1,4 @@
+#!/bin/bash
 # Simple file to help with reconfiguring/recompiling
 
 # clean up other nginx processes before starting another
@@ -12,6 +13,7 @@ QUIET=0
 REMOVE_OUT=1
 DEBUG=0
 CURRENT_DIR=$(pwd)
+NGINX_CONFIG_PATH=$CURRENT_DIR/nginx.conf
 
 # either the absolute path to the module or the relative path from nginx to the module
 # do not have to change if the run file is in the module
@@ -33,6 +35,11 @@ while [[ $# -gt 0 ]]; do
             ;;
         -v|--verbose)
             VERBOSE=1
+            shift
+            ;;
+        --nginx-config)
+            shift
+            NGINX_CONFIG_PATH=$1
             shift
             ;;
         -c|--configure)
@@ -110,15 +117,15 @@ else
     make >> /dev/null;
 fi
 
-echo "Starting nginx using configuration $CURRENT_DIR/nginx.conf"
+echo "Starting nginx using configuration $NGINX_CONFIG_PATH"
 # logic for quiet command
 if [ $QUIET == 1 ]
 then
-    out/sbin/nginx -c $CURRENT_DIR/nginx.conf >> /dev/null
+    out/sbin/nginx -c $NGINX_CONFIG_PATH >> /dev/null
 elif [ $DEBUG == 1 ]
 then
     cd $CURRENT_DIR
     gdb ../nginx/out/sbin/nginx
 else
-    out/sbin/nginx -c $CURRENT_DIR/nginx.conf
+    out/sbin/nginx -c $NGINX_CONFIG_PATH
 fi
