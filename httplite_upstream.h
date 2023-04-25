@@ -16,6 +16,7 @@
 typedef struct httplite_upstream_s {
     ngx_peer_connection_t       peer;
     ngx_pool_t                 *pool;
+    ngx_log_t                  *log;
     httplite_request_list_t    *request;
     httplite_request_slab_t    *response;
     ngx_event_t                *timer;
@@ -48,6 +49,8 @@ void httplite_find_upstream_timeout_handler(ngx_event_t *ev);
 
 void httplite_keepalive_read_handler(ngx_event_t *rev);
 void httplite_keepalive_write_handler(ngx_event_t *wev);
+
+void httplite_send_response_to_client(ngx_event_t *ev);
 
 void httplite_upstream_read_handler(ngx_event_t *rev);
 void httplite_upstream_write_handler(ngx_event_t *wev);

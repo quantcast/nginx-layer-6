@@ -48,6 +48,7 @@ httplite_upstream_t *httplite_create_upstream(ngx_pool_t *pool, ngx_array_t *arr
     name->len = strlen(address) - 1;
 
     u->pool = pool;
+    u->log = pool->log;
     u->peer.sockaddr = (struct sockaddr*)socket_address;
     u->peer.socklen = socket_length;
     u->peer.name = name;
@@ -167,7 +168,6 @@ int httplite_fetch_upstream_and_send_request(httplite_request_list_t *request) {
     }
 
     if (u == NULL)  {
-        printf("all connections are busy. will try to send request later.\n");
         ngx_log_debug0(NGX_LOG_WARN, client->log, 0, "all connections are busy. will try to send request later");
         return NGX_ERROR;
     }
@@ -180,10 +180,11 @@ int httplite_fetch_upstream_and_send_request(httplite_request_list_t *request) {
     timer->log = u->peer.log;
     timer->cancelable = 1;
     timer->handler = httplite_find_upstream_timeout_handler;
-    // TODO: This timer does not fire when exhausted.
     ngx_add_timer(timer, MAX_RETRY_TIME);
 
     u->pending_active = 1;
+    u->busy = 1;
+    
     u->request = request;
     u->keep_alive = cucf->keep_alive;
 
@@ -379,6 +380,53 @@ void httplite_keepalive_write_handler(ngx_event_t *wev) {
     }
 }
 
+void httplite_send_response_to_client(ngx_event_t *ev) {
+    httplite_event_data_t *ev_data = ev->data;
+    httplite_upstream_t *u = ev_data->upstream;
+    ngx_connection_t *client = ev_data->client;
+    ngx_connection_t *c = u->peer.connection;
+    httplite_request_slab_t *response = u->response;
+
+    if (!client->write->ready) {
+        ngx_add_timer(ev, 1000);
+        return;
+    }
+
+    int rc = client->send(client, response->buffer_pos, response->size);
+
+    if (rc <= 0) {
+        // error or client closed the connection
+        httplite_close_connection(client);
+        httplite_deactivate_upstream(u);
+        ngx_pfree(u->pool, ev);
+        return;
+    }
+
+    // data was fully sent, check if there's more to send
+    if (rc < (int) response->size) {
+        response->buffer_pos += rc;
+        response->size -= rc;
+        ngx_add_timer(ev, 1000);
+        return;
+    }
+
+    // all data sent, reset upstream write handler
+    c->write->handler = httplite_keepalive_write_handler;
+    c->read->handler = httplite_keepalive_read_handler;
+    u->busy = 0;
+
+    ngx_add_timer(c->write, u->keep_alive);
+    ngx_log_debug2(NGX_LOG_INFO, c->log, 0, "added time to %d (%p)\n", ngx_event_ident(c->read->data), u);
+
+    // free memory associated with event
+    ngx_pfree(u->pool, ev);
+
+    if (c->read->ready) {
+        // upstream has more data to send, add read event
+        ngx_handle_read_event(c->read, 0);
+    }
+}
+
 void httplite_upstream_read_handler(ngx_event_t *rev) {
     ngx_connection_t *c = rev->data;
     httplite_event_data_t *ev_data;
@@ -423,6 +471,12 @@ void httplite_upstream_read_handler(ngx_event_t *rev) {
     u->active = 1;
     u->pending_active = 0;
 
+    if (client->destroyed) {
+        TRACEME("  trying to access connection pool that has been destroyed on client connection %p.\n", client);
+        ngx_log_debug0(NGX_LOG_WARN, u->log, 0, "trying to access connection pool that has been destroyed.");
+        return;
+    }
+
     response = ngx_pcalloc(client->pool, sizeof(httplite_request_slab_t));
     if (!response) {
         fprintf(stderr, "Unable to initialize response slab in httplite_upstream_read_handler.\n");
@@ -442,47 +496,19 @@ void httplite_upstream_read_handler(ngx_event_t *rev) {
 
     u->response = response;
 
+    ngx_event_t *event = ngx_pcalloc(u->pool, sizeof(ngx_event_t));
+    event->data = u->data;
+    event->log = u->peer.log;
+    event->cancelable = 1;
+
     // wait until client is write ready to send to client
     if (!client->write->ready) {
-        ngx_add_timer(rev, DEFAULT_CLIENT_WRITE_TIMEOUT);
+        event->handler = httplite_send_response_to_client;
+        ngx_add_timer(event, DEFAULT_CLIENT_WRITE_TIMEOUT);
         return;
     }
 
-    int rc = client->send(client, response->buffer_pos, response->size);
-
-    if (rc == NGX_AGAIN) {
-        // data was only partially sent, add write event
-        ngx_handle_write_event(client->write, 0);
-        return;
-    }
-
-    if (rc <= 0) {
-        // error or client closed the connection
-        httplite_close_connection(client);
-        httplite_deactivate_upstream(u);
-        return;
-    }
-
-    // data was fully sent, check if there's more to send
-    if (rc < (int) response->size) {
-        response->buffer_pos += rc;
-        response->size -= rc;
-        ngx_handle_write_event(client->write, 0);
-        return;
-    }
-
-    // all data sent, reset upstream write handler
-    c->write->handler = httplite_keepalive_write_handler;
-    c->read->handler = httplite_keepalive_read_handler;
-    u->busy = 0;
-
-    ngx_add_timer(c->write, u->keep_alive);
-    ngx_log_debug2(NGX_LOG_INFO, c->log, 0, "added time to %d (%p)\n", ngx_event_ident(rev->data), u);
-
-    if (c->read->ready) {
-        // upstream has more data to send, add read event
-        ngx_handle_read_event(c->read, 0);
-    }
+    httplite_send_response_to_client(event);
 }
 
 void httplite_upstream_write_handler(ngx_event_t *wev) {
