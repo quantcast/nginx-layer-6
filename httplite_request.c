@@ -18,6 +18,7 @@
 
 #define RETRY_READ_TIME 1000
 #define READ_SLAB_MAX 5
+#define MAX_SPLIT_REQUEST_ITER 5
 
 #define str3_cmp(m, c0, c1, c2)     (m[0] == c0 && m[1] == c1 && m[2] == c2)
 #define str4_cmp(m, c0, c1, c2, c3) (m[0] == c0 && m[1] == c1 && m[2] == c2 && m[3] == c3)
@@ -92,7 +93,7 @@ void httplite_request_handler(ngx_event_t *rev) {
         }
 
         new_request_data->bytes_remaining = 0;
-        new_request_data->step_number = 0;
+        new_request_data->parse_state = FIND_SEPARATOR;
         new_request_data->pending_read_slabs = 0;
         c->data = new_request_data;
     }
@@ -165,10 +166,15 @@ void httplite_split_request(httplite_client_data_t *request_data, ngx_connection
     httplite_request_list_t *write_list = request_data->write_list_tail;
     httplite_request_slab_t *staging_slab = request_data->staging_list->head;
     u_char* lookahead;
+    int iter_no = 0;
 
-    while (read_slab->buffer_pos != read_slab->buffer_start + read_slab->size) {
-        switch (request_data->step_number) {
-            case 0:     /* find header-body separator*/
+    while (
+        ((read_slab->buffer_pos != read_slab->buffer_start + read_slab->size) || 
+        (request_data->parse_state != FIND_SEPARATOR)) &&
+        iter_no++ < MAX_SPLIT_REQUEST_ITER
+    ) {
+        switch (request_data->parse_state) {
+            case FIND_SEPARATOR:     /* find header-body separator*/
                 lookahead = NULL;
                 request_data->bytes_remaining = 0;
 
@@ -199,7 +205,7 @@ void httplite_split_request(httplite_client_data_t *request_data, ngx_connection
                 if (split_bytes != 0) { /* separator was split */
                     read_slab->buffer_pos = read_slab->buffer_start;
                     httplite_copy_to_list(request_data->staging_list, split_bytes, read_slab, &(read_slab->buffer_pos));
-                    request_data->step_number = 1;
+                    request_data->parse_state = PARSE_CONTENT_LENGTH;
                     break;
                 }
 
@@ -212,7 +218,7 @@ void httplite_split_request(httplite_client_data_t *request_data, ngx_connection
                     /* if found, copy up to the separator into staging and advance to next step */
                     size_t copy_size = lookahead - read_slab->buffer_pos + HEADER_BODY_SEPARATOR_SIZE;
                     httplite_copy_to_list(request_data->staging_list, copy_size, read_slab, &(read_slab->buffer_pos));
-                    request_data->step_number = 1;
+                    request_data->parse_state = PARSE_CONTENT_LENGTH;
                     break;
                 } else {
                     if (bytes_searched >= SLAB_SIZE) {
@@ -244,8 +250,8 @@ void httplite_split_request(httplite_client_data_t *request_data, ngx_connection
                     write_list = httplite_add_list_to_chain(write_list, c);
                     request_data->write_list_tail = write_list;
 
-                    /* reset step to 0 for next request */
-                    request_data->step_number = 0;
+                    /* reset step to FIND_SEPARATOR for next request */
+                    request_data->parse_state = FIND_SEPARATOR;
                     break;
                 } else {
                     /* confirm we have a POST request*/
@@ -290,7 +296,7 @@ void httplite_split_request(httplite_client_data_t *request_data, ngx_connection
                     request_data->staging_list->head = httplite_add_slab(request_data->staging_list);
                     staging_slab = request_data->staging_list->head;
 
-                    request_data->step_number = 2;
+                    request_data->parse_state = COPY_BODY;
                     break;
                 } else {
                     c->send(c, (u_char*) HTTP_411_RESPONSE, strlen(HTTP_411_RESPONSE));
@@ -323,7 +329,7 @@ void httplite_split_request(httplite_client_data_t *request_data, ngx_connection
                     request_data->write_list_tail = write_list;
 
                     /* reset step number to set up for next request */
-                    request_data->step_number = 0;
+                    request_data->parse_state = FIND_SEPARATOR;
                     break;
                 }
         }
