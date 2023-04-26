@@ -4,12 +4,11 @@ import { MockServer } from "../helpers/mock-server";
 import { NginxConfiguration } from "../models/nginx-configuration";
 
 describe("Broken Connection Test Suite", () => {
-    const loadBalancer = new LoadBalancer();
     const configuration = new NginxConfiguration();
-    const upstreams = configuration.httplite.upstreams.servers;
+    const loadBalancer = new LoadBalancer(configuration);
 
     beforeEach(async () => {
-        await loadBalancer.open(configuration);
+        await loadBalancer.open();
     });
 
     afterEach(async () => {

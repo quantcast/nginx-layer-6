@@ -3,15 +3,15 @@ import { LoadBalancer } from "../helpers/load-balancer";
 import { NginxConfiguration } from "../models/nginx-configuration";
 
 describe("Keep Alive Test Suite", () => {
-    const loadBalancer = new LoadBalancer();
     const configuration = new NginxConfiguration();
+    const loadBalancer = new LoadBalancer(configuration);
     const keepAliveTimeout =
         configuration.httplite.upstreams.keepAliveTimeoutMiliseconds;
     const upstreams = configuration.httplite.upstreams.servers;
     const TimeoutGraceMiliseconds = 5;
 
     beforeEach(async () => {
-        await loadBalancer.open(configuration);
+        await loadBalancer.open();
     });
 
     afterEach(async () => {

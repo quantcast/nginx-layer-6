@@ -10,23 +10,25 @@ export class LoadBalancer {
     private servers: MockServer[];
     private nginxConfigurationService: NginxConfigurationService;
     private configurationPath: string | null;
+    private configuration: NginxConfiguration;
     private verbose: boolean;
 
-    constructor(verbose: boolean = false) {
+    constructor(configuration: NginxConfiguration, verbose: boolean = false) {
         this.verbose = verbose;
+        this.configuration = configuration;
         this.nginxConfigurationService = new NginxConfigurationService();
         this.loadBalancerProcess = new LoadBalancerProcess(verbose);
         this.servers = [];
         this.configurationPath = null;
     }
 
-    async open(configuration: NginxConfiguration) {
+    async open() {
         this.servers = this.createServers(
-            configuration.httplite.upstreams.servers
+            this.configuration.httplite.upstreams.servers
         );
         this.configurationPath =
             await this.nginxConfigurationService.writeConfiguration(
-                configuration
+                this.configuration
             );
         await this.loadBalancerProcess.spawn(this.configurationPath);
         await Promise.all(this.servers.map((server) => server.open()));
@@ -46,18 +48,26 @@ export class LoadBalancer {
         return this.servers.map((server) => server.getDetails());
     }
 
+    port() {
+        return this.configuration.httplite.sever.port
+    }
+
     ping(n: number = 1, abortController?: AbortController) {
         const requestPromises: Promise<AxiosResponse>[] = [];
         for (let i = 0; i < n; i++) {
             requestPromises.push(
-                axios.post("http://localhost:8888", "ping", {
-                    headers: {
-                        Connection: "keep-alive",
-                    },
-                    signal: abortController
-                        ? abortController.signal
-                        : undefined,
-                })
+                axios.post(
+                    `http://localhost:${this.port()}`,
+                    "ping",
+                    {
+                        headers: {
+                            Connection: "keep-alive",
+                        },
+                        signal: abortController
+                            ? abortController.signal
+                            : undefined,
+                    }
+                )
             );
         }
         return requestPromises;

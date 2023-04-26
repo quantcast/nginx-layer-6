@@ -2,12 +2,12 @@ import { LoadBalancer } from "../helpers/load-balancer";
 import { NginxConfiguration } from "../models/nginx-configuration";
 
 describe("Round Robin Load Balancer Test Suite", () => {
-    const loadBalancer = new LoadBalancer();
     const configuration = new NginxConfiguration();
+    const loadBalancer = new LoadBalancer(configuration);
     const upstreams = configuration.httplite.upstreams.servers;
 
     beforeEach(async () => {
-        await loadBalancer.open(configuration);
+        await loadBalancer.open();
     });
 
     afterEach(async () => {
@@ -37,8 +37,12 @@ describe("Round Robin Load Balancer Test Suite", () => {
         const details = loadBalancer.getUpstreamDetails();
 
         for (let i = 0; i < details.length; i++) {
-            expect(details[i].requests).toBeGreaterThanOrEqual(pingFactor * upstreams[i].connections);
-            expect(details[i].requests).toBeLessThanOrEqual(pingFactor * upstreams[i].connections + 1);
+            expect(details[i].requests).toBeGreaterThanOrEqual(
+                pingFactor * upstreams[i].connections
+            );
+            expect(details[i].requests).toBeLessThanOrEqual(
+                pingFactor * upstreams[i].connections + 1
+            );
         }
     });
 
