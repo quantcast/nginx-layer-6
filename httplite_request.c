@@ -166,12 +166,10 @@ void httplite_split_request(httplite_client_data_t *request_data, ngx_connection
     httplite_request_list_t *write_list = request_data->write_list_tail;
     httplite_request_slab_t *staging_slab = request_data->staging_list->head;
     u_char* lookahead;
-    int iter_no = 0;
 
     while (
         ((read_slab->buffer_pos != read_slab->buffer_start + read_slab->size) || 
-        (request_data->parse_state != FIND_SEPARATOR)) &&
-        iter_no++ < MAX_SPLIT_REQUEST_ITER
+        (request_data->parse_state != FIND_SEPARATOR))
     ) {
         switch (request_data->parse_state) {
             case FIND_SEPARATOR:     /* find header-body separator*/
