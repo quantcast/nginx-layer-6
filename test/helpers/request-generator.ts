@@ -18,6 +18,17 @@ export class RequestGenerator {
         return requests;
     }
 
+    generatePostRequests(
+        n: number,
+        configuration: NginxConfiguration
+    ): HTTPRequest[] {
+        const requests: HTTPRequest[] = [];
+        for (let i = 0; i < n; i++) {
+            requests.push(this.generatePostRequest(i, configuration));
+        }
+        return requests;
+    }
+
     private generatePostRequest(i: number, configuration: NginxConfiguration) {
         const payload = `${i + 1}body${i + 1}`;
         return new HTTPRequest({

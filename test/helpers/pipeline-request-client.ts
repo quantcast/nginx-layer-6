@@ -1,7 +1,7 @@
 import { HTTPRequest } from "../models/http-request";
 import { HTTPResponse } from "../models/http-response";
 import { LoadBalancer } from "./load-balancer";
-import { Socket } from "net";
+import { Socket, createConnection } from "net";
 
 export class PipelineRequestClient {
     private readonly loadBalancer: LoadBalancer;
@@ -11,30 +11,23 @@ export class PipelineRequestClient {
     }
 
     async pipelineRequests(requests: HTTPRequest[]) {
-        const socket = new Socket();
-        await this.connect(socket);
+        const socket = await this.connect();
         const flushed = socket.write(this.formatRequests(requests));
         if (!flushed) {
             await this.drain(socket);
         }
         const responses = await this.readResponses(socket, requests);
-        socket.destroy();
+        await this.close(socket);
         return responses;
     }
 
-    private connect(socket: Socket) {
-        return new Promise<void>((resolve, reject) => {
-            socket.connect(this.loadBalancer.port(), "localhost");
-            const timer = setTimeout(() => {
-                reject(new Error("Timed out while connecting"));
-            }, 60 * 1000);
-
-            socket.on("connect", () => {
-                clearTimeout(timer);
-                resolve();
+    private connect() {
+        return new Promise<Socket>((resolve, reject) => {
+            const socket = createConnection({
+                host: "localhost",
+                port: this.loadBalancer.port(),
             });
-
-            socket.on("error", (error) => reject(error));
+            socket.on("connect", () => resolve(socket));
         });
     }
 
@@ -101,6 +94,15 @@ export class PipelineRequestClient {
             status,
             body,
             headers,
+        });
+    }
+
+    private close(socket: Socket) {
+        return new Promise<void>((resolve) => {
+            socket.on("end", () => {
+                resolve();
+            });
+            socket.end();
         });
     }
 }
