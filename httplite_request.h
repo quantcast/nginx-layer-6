@@ -10,6 +10,13 @@
 
 enum HTTP_method { GET, POST };
 
+/* State refers to the current action we are trying to complete */
+typedef enum httplite_request_parse_state_e { 
+   FIND_SEPARATOR, 
+   PARSE_CONTENT_LENGTH, 
+   COPY_BODY 
+} httplite_request_parse_state_t;
+
 /* Data about the connection that is maintained between calls to the request handler*/
 typedef struct httplite_client_data_s {
     httplite_request_list_t *read_list;             /* Where the raw request strings are received into */
@@ -19,7 +26,7 @@ typedef struct httplite_client_data_s {
     httplite_request_list_t *write_list_tail;       /* Tail node of the chain of parsed requests */
     httplite_request_list_t *staging_list;          /* Intermediate holding area for fragmented headers */
     size_t bytes_remaining;                         /* For the current request, how many bytes are left to be copied */
-    size_t step_number;                             /* Keeps track of which step in the request parsing we are on */
+    httplite_request_parse_state_t parse_state;     /* Keeps track of which step in the request parsing we are on */
     size_t pending_read_slabs;                      /* If this gets too large, shuts down the connection */
 } httplite_client_data_t;
 
