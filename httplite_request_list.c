@@ -38,7 +38,7 @@ httplite_request_slab_t *httplite_add_slab(httplite_request_list_t *list) {
     }
 
     new_slab->size = 0;
-    new_slab->buffer_start = ngx_pnalloc(list->connection->pool, SLAB_SIZE);
+    new_slab->buffer_start = ngx_pnalloc(list->connection->pool, SLAB_SIZE + 1);
     if (!new_slab->buffer_start) {
         ngx_log_error(NGX_LOG_ALERT,list->connection->log, 0, "unable to the string buffer on connection's memory pool.");
         return NULL;
