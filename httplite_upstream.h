@@ -32,7 +32,7 @@ typedef struct {
     httplite_upstream_t *upstream;
 } httplite_event_data_t;
 
-void httplite_empty_handler();
+void httplite_empty_handler(ngx_event_t *ev);
 
 httplite_upstream_t *httplite_create_upstream(ngx_pool_t *pool, ngx_array_t *arr, char *address, ngx_int_t port);
 
