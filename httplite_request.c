@@ -120,7 +120,20 @@ void httplite_request_handler(ngx_event_t *rev) {
     // }
 
     if (rev->ready) {
-        read_list->tail->size = c->recv(c, read_list->tail->buffer_start, SLAB_SIZE);
+        ssize_t n = c->recv(c, read_list->tail->buffer_start, SLAB_SIZE);
+
+        if (n == NGX_AGAIN) {
+            return;
+        }
+
+        if (n <= 0) {
+            httplite_close_connection(c);
+            return;
+        }
+
+        read_list->tail->size = n;
+        /* null-terminate so strstr in split_request does not read past the buffer */
+        read_list->tail->buffer_start[n] = '\0';
         request_data->pending_read_slabs += 1;
     }
 
