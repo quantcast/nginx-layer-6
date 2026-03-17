@@ -257,7 +257,7 @@ void httplite_send_client_error(ngx_connection_t *client, char *message) {
     }
 
     client->data = ngx_pcalloc(client->pool, length);
-    memcpy(client->data, message, msg_len);
+    memcpy(client->data, message, length);
 
     client->write->handler = httplite_send_client_error_handler;
 }
