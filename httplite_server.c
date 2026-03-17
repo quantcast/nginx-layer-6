@@ -77,12 +77,13 @@ ngx_int_t httplite_server_init_listening(ngx_conf_t *cf, ngx_int_t port)
     socket_address->sin_addr.s_addr = INADDR_ANY;
 
     ls = ngx_create_listening(cf, (struct sockaddr*)socket_address, socket_length);
-    ls->servers = httplite_conf_get_module_upstream_conf(cf, httplite_http_module);
-    
+
     if (ls == NULL) {
         printf("Failed to create listening socket\n");
         return NGX_ERROR;
     }
+
+    ls->servers = httplite_conf_get_module_upstream_conf(cf, httplite_http_module);
 
     ls->addr_ntop = 1;
 
