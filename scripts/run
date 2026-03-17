@@ -1,3 +1,4 @@
+#!/bin/bash
 # Simple file to help with reconfiguring/recompiling
 
 # clean up other nginx processes before starting another
