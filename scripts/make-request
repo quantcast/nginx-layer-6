@@ -1,3 +1,4 @@
+#!/bin/bash
 # Simple script to make an HTTP request using curl with predefined data
 PORT=
 HOST=
