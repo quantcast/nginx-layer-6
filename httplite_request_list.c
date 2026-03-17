@@ -7,7 +7,7 @@ httplite_request_list_t *httplite_init_list(ngx_connection_t *connection) {
     /* does not add a slab to the list, i.e. list->head is NULL. This must be done manually */
     httplite_request_list_t *list = ngx_pcalloc(connection->pool, sizeof(httplite_request_list_t));
     if (!list) {
-        ngx_log_error(NGX_ERROR_ALERT, connection->log, 0, "unable to allocate memory for list.");
+        ngx_log_error(NGX_LOG_ALERT, connection->log, 0, "unable to allocate memory for list.");
         return NULL;
     }
     
@@ -33,14 +33,14 @@ httplite_request_slab_t *httplite_add_slab(httplite_request_list_t *list) {
     httplite_request_slab_t *new_slab = ngx_pcalloc(list->connection->pool, sizeof(httplite_request_slab_t));
 
     if (!new_slab) {
-        ngx_log_error(NGX_ERROR_ALERT, list->connection->log, 0, "unable to create new slab on connection's memory pool.");
+        ngx_log_error(NGX_LOG_ALERT, list->connection->log, 0, "unable to create new slab on connection's memory pool.");
         return NULL;
     }
 
     new_slab->size = 0;
     new_slab->buffer_start = ngx_pnalloc(list->connection->pool, SLAB_SIZE);
     if (!new_slab->buffer_start) {
-        ngx_log_error(NGX_ERROR_ALERT,list->connection->log, 0, "unable to the string buffer on connection's memory pool.");
+        ngx_log_error(NGX_LOG_ALERT,list->connection->log, 0, "unable to the string buffer on connection's memory pool.");
         return NULL;
     }
 

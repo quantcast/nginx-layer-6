@@ -42,7 +42,7 @@ void httplite_close_connection(ngx_connection_t *c) {
 void *httplite_calloc(ngx_pool_t *pool, size_t size) {
     void *ret = ngx_pcalloc(pool, size);
     if (!ret) {
-        ngx_log_error(NGX_ERROR_ALERT, pool->log, 0, "unable to create allocate memory on connection pool.");
+        ngx_log_error(NGX_LOG_ALERT, pool->log, 0, "unable to create allocate memory on connection pool.");
         return NULL;
     }
 
@@ -217,7 +217,7 @@ void httplite_split_request(httplite_client_data_t *request_data, ngx_connection
                 } else {
                     if (bytes_searched >= SLAB_SIZE) {
                         /* we are assuming all headers should fit on one slab */
-                        ngx_log_error(NGX_ERROR_ALERT, c->log, 0, "headers span more than one packet");
+                        ngx_log_error(NGX_LOG_ALERT, c->log, 0, "headers span more than one packet");
                         return;
                     } else {
                         /* if separator is not found, copy up to end of slab into staging and stay on this step */
@@ -250,7 +250,7 @@ void httplite_split_request(httplite_client_data_t *request_data, ngx_connection
                 } else {
                     /* confirm we have a POST request*/
                     if (!str4_cmp(staging_slab->buffer_start, 'P', 'O', 'S', 'T')) {
-                        ngx_log_error(NGX_ERROR_ALERT, c->log, 0, "invalid request type (only GET and POST accepted)");
+                        ngx_log_error(NGX_LOG_ALERT, c->log, 0, "invalid request type (only GET and POST accepted)");
                         return;
                     }
                 }

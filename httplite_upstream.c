@@ -246,7 +246,7 @@ void httplite_send_client_error(ngx_connection_t *client, char *message) {
         int n = client->send(client, message, strlen(message));
         
         if (n == NGX_ERROR) {
-            ngx_log_error(NGX_ERROR_ALERT, client->log, 0, "unable to send error response to client!");
+            ngx_log_error(NGX_LOG_ALERT, client->log, 0, "unable to send error response to client!");
         }
 
         client->write->handler = httplite_empty_handler;
@@ -271,7 +271,7 @@ void httplite_send_client_error_handler(ngx_event_t *wev) {
     }
     
     if (wev->timedout) {
-        ngx_log_error(NGX_ERROR_ALERT, wev->log, 0, "timed out while sending response error to client.");
+        ngx_log_error(NGX_LOG_ALERT, wev->log, 0, "timed out while sending response error to client.");
         return;
     }
 
@@ -289,7 +289,7 @@ void httplite_send_client_error_handler(ngx_event_t *wev) {
     client->write->handler = httplite_empty_handler;
 
     if (n == NGX_ERROR) {
-        ngx_log_error(NGX_ERROR_ALERT, wev->log, 0, "unable to send error response to client!");
+        ngx_log_error(NGX_LOG_ALERT, wev->log, 0, "unable to send error response to client!");
     }
 }
 
