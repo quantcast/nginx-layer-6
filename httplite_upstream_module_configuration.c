@@ -76,14 +76,14 @@ char* httplite_parse_upstream_server(ngx_conf_t *cf, ngx_command_t *cmd, void *d
     value = cf->args->elts;
 
     upstream_server = (char*)value[1].data;
-    port_str = strstr(upstream_server, ":") + 1;
-    port = port_str ? atoi(port_str) : DEFAULT_PORT;
+    port_str = strstr(upstream_server, ":");
+    port = port_str ? atoi(port_str + 1) : DEFAULT_PORT;
 
-    /* parsing the port number from the first argument */
-    server_len = port_str - upstream_server;
-    char server[server_len];
-    memset(server, 0, server_len);
-    strncpy(server, upstream_server, server_len - 1);
+    /* parsing the server address (everything before the ':') */
+    server_len = port_str ? (ngx_uint_t)(port_str - upstream_server) : strlen(upstream_server);
+    char server[server_len + 1];
+    memset(server, 0, server_len + 1);
+    strncpy(server, upstream_server, server_len);
 
     /* parsing inline arguments */
     for (i = 2; i < cf->args->nelts; i++) {
