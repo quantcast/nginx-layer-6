@@ -44,8 +44,9 @@ httplite_upstream_t *httplite_create_upstream(ngx_pool_t *pool, ngx_array_t *arr
 
     name = ngx_pcalloc(pool, sizeof(ngx_str_t));
     name->data = ngx_pnalloc(pool, INET_ADDRSTRLEN);
-    name->data = (u_char *) address;
-    name->len = strlen(address) - 1;
+    name->len = strlen(address);
+    ngx_memcpy(name->data, address, name->len);
+    name->data[name->len] = '\0';
 
     u->pool = pool;
     u->log = pool->log;
@@ -412,7 +413,36 @@ void httplite_send_response_to_client(ngx_event_t *ev) {
         return;
     }
 
-    // all data sent, reset upstream write handler
+    // current slab fully sent — check if upstream has more data
+    if (c->read->ready) {
+        ssize_t n = c->recv(c, response->buffer_start, SLAB_SIZE);
+
+        if (n > 0) {
+            // more response data available, send it
+            response->buffer_pos = response->buffer_start;
+            response->size = n;
+            u->response = response;
+
+            if (client->write->ready) {
+                httplite_send_response_to_client(ev);
+            } else {
+                ev->handler = httplite_send_response_to_client;
+                ngx_add_timer(ev, 1000);
+            }
+            return;
+        }
+
+        if (n == 0) {
+            // upstream closed the connection
+            httplite_deactivate_upstream(u);
+            ngx_pfree(u->pool, ev);
+            return;
+        }
+
+        // n == NGX_AGAIN or NGX_ERROR: fall through to finish
+    }
+
+    // no more data from upstream — transition to keepalive
     c->write->handler = httplite_keepalive_write_handler;
     c->read->handler = httplite_keepalive_read_handler;
     u->busy = 0;
@@ -422,11 +452,6 @@ void httplite_send_response_to_client(ngx_event_t *ev) {
 
     // free memory associated with event
     ngx_pfree(u->pool, ev);
-
-    if (c->read->ready) {
-        // upstream has more data to send, add read event
-        ngx_handle_read_event(c->read, 0);
-    }
 }
 
 void httplite_upstream_read_handler(ngx_event_t *rev) {
@@ -494,7 +519,20 @@ void httplite_upstream_read_handler(ngx_event_t *rev) {
 
     // read the content from the upstream and store it on the current connection so as to prevent blocking on the upstream connection
     n = c->recv(c, response->buffer_pos, SLAB_SIZE);
-    response->size += n;
+
+    if (n == NGX_AGAIN) {
+        // no data available yet, wait for next read event
+        return;
+    }
+
+    if (n <= 0) {
+        // upstream closed connection or error
+        httplite_send_client_error(client, HTTP_INACTIVE_UPSTREAM_RESPONSE);
+        httplite_deactivate_upstream(u);
+        return;
+    }
+
+    response->size = n;
 
     u->response = response;
 
