@@ -53,7 +53,6 @@ void httplite_request_handler(ngx_event_t *rev) {
     ngx_connection_t *c;
     httplite_client_data_t *request_data;
     httplite_request_list_t *read_list;
-    httplite_request_slab_t *next_slab;
 
     c = rev->data;
 
