@@ -12,7 +12,7 @@
 #define HTTPLITE_TRACE_ON 0
 #define TRACEME(fmt, ...) if (HTTPLITE_TRACE_ON) printf("[%s @ %s:%d]\n"fmt, __func__, __FILE__, __LINE__, __VA_ARGS__)
 
-void httplite_empty_handler() {}
+void httplite_empty_handler(ngx_event_t *ev) {}
 
 httplite_upstream_t *httplite_create_upstream(ngx_pool_t *pool, ngx_array_t *arr, char *address, ngx_int_t port) {
     httplite_upstream_t *u;
