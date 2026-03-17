@@ -241,9 +241,11 @@ void httplite_send_client_error(ngx_connection_t *client, char *message) {
         httplite_close_connection(client);
         return;
     }
+
+    int length = strlen(message);
     
     if (client->write->ready) {
-        int n = client->send(client, message, strlen(message));
+        int n = client->send(client, (u_char *) message, length);
         
         if (n == NGX_ERROR) {
             ngx_log_error(NGX_LOG_ALERT, client->log, 0, "unable to send error response to client!");
@@ -253,8 +255,8 @@ void httplite_send_client_error(ngx_connection_t *client, char *message) {
         return;
     }
 
-    client->data = ngx_pcalloc(client->pool, sizeof(message));
-    memcpy(client->data, message, sizeof(message));
+    client->data = ngx_pcalloc(client->pool, length);
+    memcpy(client->data, message, msg_len);
 
     client->write->handler = httplite_send_client_error_handler;
 }
@@ -402,7 +404,7 @@ void httplite_send_response_to_client(ngx_event_t *ev) {
         return;
     }
 
-    // data was fully sent, check if there's more to send
+    // data was partially sent, retry the remainder
     if (rc < (int) response->size) {
         response->buffer_pos += rc;
         response->size -= rc;
