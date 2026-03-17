@@ -189,18 +189,24 @@ void httplite_split_request(httplite_client_data_t *request_data, ngx_connection
                 if (staging_slab->size != 0) {
                     u_char* end = staging_slab->buffer_start + staging_slab->size;
                     u_char* start = read_slab->buffer_start;
-                    
-                    if (*(end - 3) == HEADER_BODY_SEPARATOR[0] &&
+
+                    /* 3 bytes in staging, 1 in read: need size >= 3 */
+                    if (staging_slab->size >= 3 &&
+                        *(end - 3) == HEADER_BODY_SEPARATOR[0] &&
                         *(end - 2) == HEADER_BODY_SEPARATOR[1] &&
                         *(end - 1) == HEADER_BODY_SEPARATOR[2] &&
                         *(start)   == HEADER_BODY_SEPARATOR[3]) {
                         split_bytes = 1;
-                    } else if (*(end - 2) == HEADER_BODY_SEPARATOR[0] &&
+                    /* 2 bytes in staging, 2 in read: need size >= 2 and read size >= 2 */
+                    } else if (staging_slab->size >= 2 && read_slab->size >= 2 &&
+                            *(end - 2) == HEADER_BODY_SEPARATOR[0] &&
                             *(end - 1) == HEADER_BODY_SEPARATOR[1] &&
                             *(start) == HEADER_BODY_SEPARATOR[2] &&
                             *(start + 1)   == HEADER_BODY_SEPARATOR[3]) {
                         split_bytes = 2;
-                    } else if (*(end - 1) == HEADER_BODY_SEPARATOR[0] &&
+                    /* 1 byte in staging, 3 in read: need read size >= 3 */
+                    } else if (staging_slab->size >= 1 && read_slab->size >= 3 &&
+                            *(end - 1) == HEADER_BODY_SEPARATOR[0] &&
                             *(start) == HEADER_BODY_SEPARATOR[1] &&
                             *(start + 1) == HEADER_BODY_SEPARATOR[2] &&
                             *(start + 2)   == HEADER_BODY_SEPARATOR[3]) {
@@ -281,8 +287,8 @@ void httplite_split_request(httplite_client_data_t *request_data, ngx_connection
                         ++runner;
                     }
 
-                    /* convert body size value from string to size_t */
-                    size_t body_size = ngx_atosz(temp, runner - temp);
+                    /* convert body size value from string to ssize_t */
+                    ssize_t body_size = ngx_atosz(temp, runner - temp);
 
                     if (body_size < 0) {
                         ngx_log_error(NGX_LOG_ALERT, c->log, 0, "content length value invalid");
