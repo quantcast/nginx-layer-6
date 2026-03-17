@@ -264,12 +264,15 @@ void httplite_send_client_error_handler(ngx_event_t *wev) {
     char *message;
     int n;
 
+    client = wev->data;
+    message = client->data;
+
     if (httplite_check_broken_connection(client) != NGX_OK) {
         ngx_log_debug0(NGX_LOG_WARN, client->log, 0, "Client was closed during error handling.");
         httplite_close_connection(client);
         return;
     }
-    
+
     if (wev->timedout) {
         ngx_log_error(NGX_LOG_ALERT, wev->log, 0, "timed out while sending response error to client.");
         return;
@@ -282,10 +285,7 @@ void httplite_send_client_error_handler(ngx_event_t *wev) {
 
     wev->handler = httplite_empty_handler;
 
-    client = wev->data;
-    message = client->data;
-    
-    n = client->send(client, message, strlen(message));
+    n = client->send(client, (u_char *) message, strlen(message));
     client->write->handler = httplite_empty_handler;
 
     if (n == NGX_ERROR) {
