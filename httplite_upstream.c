@@ -163,9 +163,15 @@ int httplite_send_request_to_upstream(httplite_request_list_t *request) {
         u, request
     );
 
-    // the connection is already established so we can delete the timer
+    // cancel any pending timers before reusing this connection
     if (u->timer->timer_set) {
         ngx_del_timer(u->timer);
+    }
+    if (peer_c->write->timer_set) {
+        ngx_del_timer(peer_c->write);
+    }
+    if (peer_c->read->timer_set) {
+        ngx_del_timer(peer_c->read);
     }
 
     if (peer_c->write->ready) {
