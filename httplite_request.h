@@ -10,6 +10,9 @@
 
 enum HTTP_method { GET, POST };
 
+/* Forward declaration */
+struct httplite_upstream_s;
+
 /* Data about the connection that is maintained between calls to the request handler*/
 typedef struct httplite_client_data_s {
     httplite_request_list_t *read_list;             /* Where the raw request strings are received into */
@@ -21,6 +24,9 @@ typedef struct httplite_client_data_s {
     size_t bytes_remaining;                         /* For the current request, how many bytes are left to be copied */
     size_t step_number;                             /* Keeps track of which step in the request parsing we are on */
     size_t pending_read_slabs;                      /* If this gets too large, shuts down the connection */
+
+    /* Response handling */
+    struct httplite_upstream_s *response_upstream;  /* Upstream currently sending response to this client */
 } httplite_client_data_t;
 
 /* ------------------------------------------------------------------------------

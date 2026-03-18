@@ -14,6 +14,27 @@
 
 void httplite_empty_handler(ngx_event_t *ev) {}
 
+/**
+ * Client write handler that sends upstream response when client is write-ready.
+ * Called by nginx event loop when client socket becomes writable.
+ */
+static void httplite_client_response_write_handler(ngx_event_t *wev) {
+    ngx_connection_t *client = wev->data;
+    httplite_client_data_t *client_data = client->data;
+    httplite_upstream_t *u = client_data->response_upstream;
+
+    if (!u || !u->pending_response_event) {
+        ngx_log_error(NGX_LOG_ALERT, client->log, 0, "client write ready but no pending response event");
+        return;
+    }
+
+    ngx_event_t *ev = u->pending_response_event;
+    u->pending_response_event = NULL;  // Clear it before calling handler
+
+    // Call the response handler
+    httplite_send_response_to_client(ev);
+}
+
 httplite_upstream_t *httplite_create_upstream(ngx_pool_t *pool, ngx_array_t *arr, char *address, ngx_int_t port) {
     httplite_upstream_t *u;
     struct sockaddr_in *socket_address;
@@ -391,7 +412,20 @@ void httplite_send_response_to_client(ngx_event_t *ev) {
     httplite_request_slab_t *response = u->response;
 
     if (!client->write->ready) {
-        ngx_add_timer(ev, 1000);
+        // Store event and context for the write handler
+        u->pending_response_event = ev;
+        httplite_client_data_t *client_data = client->data;
+        client_data->response_upstream = u;
+
+        // Set write handler and register write interest
+        client->write->handler = httplite_client_response_write_handler;
+        if (ngx_handle_write_event(client->write, 0) != NGX_OK) {
+            httplite_close_connection(client);
+            httplite_deactivate_upstream(u);
+            ngx_pfree(u->pool, ev);
+            return;
+        }
+        ngx_add_timer(client->write, 1000);
         return;
     }
 
@@ -409,7 +443,21 @@ void httplite_send_response_to_client(ngx_event_t *ev) {
     if (rc < (int) response->size) {
         response->buffer_pos += rc;
         response->size -= rc;
-        ngx_add_timer(ev, 1000);
+
+        // Store event and context for the write handler
+        u->pending_response_event = ev;
+        httplite_client_data_t *client_data = client->data;
+        client_data->response_upstream = u;
+
+        // Set write handler and register write interest
+        client->write->handler = httplite_client_response_write_handler;
+        if (ngx_handle_write_event(client->write, 0) != NGX_OK) {
+            httplite_close_connection(client);
+            httplite_deactivate_upstream(u);
+            ngx_pfree(u->pool, ev);
+            return;
+        }
+        ngx_add_timer(client->write, 1000);
         return;
     }
 
@@ -427,7 +475,21 @@ void httplite_send_response_to_client(ngx_event_t *ev) {
                 httplite_send_response_to_client(ev);
             } else {
                 ev->handler = httplite_send_response_to_client;
-                ngx_add_timer(ev, 1000);
+
+                // Store event and context for the write handler
+                u->pending_response_event = ev;
+                httplite_client_data_t *client_data = client->data;
+                client_data->response_upstream = u;
+
+                // Set write handler and register write interest
+                client->write->handler = httplite_client_response_write_handler;
+                if (ngx_handle_write_event(client->write, 0) != NGX_OK) {
+                    httplite_close_connection(client);
+                    httplite_deactivate_upstream(u);
+                    ngx_pfree(u->pool, ev);
+                    return;
+                }
+                ngx_add_timer(client->write, 1000);
             }
             return;
         }
@@ -449,6 +511,19 @@ void httplite_send_response_to_client(ngx_event_t *ev) {
 
     ngx_add_timer(c->write, u->keep_alive);
     ngx_log_debug2(NGX_LOG_INFO, c->log, 0, "added time to %d (%p)\n", ngx_event_ident(c->read->data), u);
+
+    // re-enable client connection to read next request
+    if (!client->destroyed && client->read) {
+        if (ngx_handle_read_event(client->read, 0) != NGX_OK) {
+            httplite_close_connection(client);
+            ngx_pfree(u->pool, ev);
+            return;
+        }
+        // if client has data ready, post event for processing
+        if (client->read->ready) {
+            ngx_post_event(client->read, &ngx_posted_events);
+        }
+    }
 
     // free memory associated with event
     ngx_pfree(u->pool, ev);
@@ -544,7 +619,20 @@ void httplite_upstream_read_handler(ngx_event_t *rev) {
     // wait until client is write ready to send to client
     if (!client->write->ready) {
         event->handler = httplite_send_response_to_client;
-        ngx_add_timer(event, DEFAULT_CLIENT_WRITE_TIMEOUT);
+
+        // Store event and context for the write handler
+        u->pending_response_event = event;
+        httplite_client_data_t *client_data = client->data;
+        client_data->response_upstream = u;
+
+        // Set write handler and register write interest
+        client->write->handler = httplite_client_response_write_handler;
+        if (ngx_handle_write_event(client->write, 0) != NGX_OK) {
+            httplite_close_connection(client);
+            httplite_deactivate_upstream(u);
+            return;
+        }
+        ngx_add_timer(client->write, DEFAULT_CLIENT_WRITE_TIMEOUT);
         return;
     }
 

@@ -21,6 +21,7 @@ typedef struct httplite_upstream_s {
     httplite_request_slab_t    *response;
     ngx_event_t                *timer;
     void                       *data;
+    ngx_event_t                *pending_response_event;  /* Event waiting to send response to client */
     int                         keep_alive;
     int                         active;
     int                         pending_active;
