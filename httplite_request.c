@@ -308,6 +308,14 @@ void httplite_split_request(httplite_client_data_t *request_data, ngx_connection
                     request_data->staging_list->head = httplite_add_slab(request_data->staging_list);
                     staging_slab = request_data->staging_list->head;
 
+                    /* Content-Length: 0 means no body to read */
+                    if (body_size == 0) {
+                        write_list = httplite_add_list_to_chain(write_list, c);
+                        request_data->write_list_tail = write_list;
+                        request_data->step_number = 0;
+                        break;
+                    }
+
                     request_data->step_number = 2;
                     break;
                 } else {
