@@ -33,7 +33,8 @@ die "nginx failed to start on port $listen_port"
 # KNOWN BUG-004: silent failure, no response, client hangs
 ###############################################################################
 
-{
+TODO: {
+    local $TODO = 'BUG-004: silent failure for unsupported methods';
     my $resp = $t->http(
         "PUT / HTTP/1.1\r\n"
         . "Host: 127.0.0.1\r\n"
@@ -44,8 +45,7 @@ die "nginx failed to start on port $listen_port"
         timeout => 3, nresponses => 1,
     );
     my $got_response = defined $resp && $resp ne '';
-    ok($got_response, 'ERR-001: PUT method - got a response')
-        or diag('KNOWN BUG-004: unsupported method, no error response sent');
+    ok($got_response, 'ERR-001: PUT method - got a response');
 }
 
 ###############################################################################
@@ -53,7 +53,8 @@ die "nginx failed to start on port $listen_port"
 # KNOWN BUG-004
 ###############################################################################
 
-{
+TODO: {
+    local $TODO = 'BUG-004: silent failure for unsupported methods';
     my $resp = $t->http(
         "DELETE /resource HTTP/1.1\r\n"
         . "Host: 127.0.0.1\r\n"
@@ -62,8 +63,7 @@ die "nginx failed to start on port $listen_port"
         timeout => 3, nresponses => 1,
     );
     my $got_response = defined $resp && $resp ne '';
-    ok($got_response, 'ERR-002: DELETE method - got a response')
-        or diag('KNOWN BUG-004: unsupported method, silent failure');
+    ok($got_response, 'ERR-002: DELETE method - got a response');
 }
 
 ###############################################################################
@@ -71,7 +71,8 @@ die "nginx failed to start on port $listen_port"
 # KNOWN BUG-004
 ###############################################################################
 
-{
+TODO: {
+    local $TODO = 'BUG-004: silent failure for unsupported methods';
     my $resp = $t->http(
         "HEAD / HTTP/1.1\r\n"
         . "Host: 127.0.0.1\r\n"
@@ -80,8 +81,7 @@ die "nginx failed to start on port $listen_port"
         timeout => 3, nresponses => 1,
     );
     my $got_response = defined $resp && $resp ne '';
-    ok($got_response, 'ERR-003: HEAD method - got a response')
-        or diag('KNOWN BUG-004: unsupported method, silent failure');
+    ok($got_response, 'ERR-003: HEAD method - got a response');
 }
 
 ###############################################################################

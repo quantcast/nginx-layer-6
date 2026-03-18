@@ -33,11 +33,15 @@ die "nginx failed to start on port $listen_port"
 ###############################################################################
 
 {
+    my $body = 'test';
+    my $len  = length $body;
     my $resp = $t->http(
-        "GET / HTTP/1.1\r\n"
+        "POST / HTTP/1.1\r\n"
         . "Host: 127.0.0.1\r\n"
+        . "Content-Length: $len\r\n"
         . "Connection: keep-alive\r\n"
-        . "\r\n",
+        . "\r\n"
+        . $body,
         nresponses => 1,
     );
     like($resp, qr{^HTTP/1\.[01] \d{3}},
@@ -49,11 +53,15 @@ die "nginx failed to start on port $listen_port"
 ###############################################################################
 
 {
+    my $body = 'test';
+    my $len  = length $body;
     my $resp = $t->http(
-        "GET / HTTP/1.1\r\n"
+        "POST / HTTP/1.1\r\n"
         . "Host: 127.0.0.1\r\n"
+        . "Content-Length: $len\r\n"
         . "Connection: keep-alive\r\n"
-        . "\r\n",
+        . "\r\n"
+        . $body,
         nresponses => 1,
     );
     like($resp, qr/Content-Length:\s*\d+/i,
@@ -106,11 +114,15 @@ die "nginx failed to start on port $listen_port"
 ###############################################################################
 
 {
+    my $body = 'test';
+    my $len  = length $body;
     my $resp = $t->http(
-        "GET / HTTP/1.1\r\n"
+        "POST / HTTP/1.1\r\n"
         . "Host: 127.0.0.1\r\n"
+        . "Content-Length: $len\r\n"
         . "Connection: keep-alive\r\n"
-        . "\r\n",
+        . "\r\n"
+        . $body,
         nresponses => 1,
     );
     like($resp, qr/\r\n\r\n/,

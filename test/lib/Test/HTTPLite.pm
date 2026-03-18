@@ -11,6 +11,8 @@ use File::Temp ();
 use File::Path qw(rmtree);
 use IO::Socket::INET;
 use IO::Select;
+use LWP::UserAgent;
+use HTTP::Request;
 use POSIX qw(:sys_wait_h SIGQUIT SIGKILL SIGTERM);
 use Test::More;
 use Time::HiRes qw(sleep time usleep);
@@ -96,6 +98,26 @@ sub write_config_raw {
 
     $self->{_conf} = $path;
     return $self;
+}
+
+# --- LWP helpers ----------------------------------------------------------
+
+sub ua {
+    my ($self, %opts) = @_;
+    my $timeout    = $opts{timeout}    || 5;
+    my $keep_alive = $opts{keep_alive} // 0;  # Default to no keep-alive
+
+    my $ua = LWP::UserAgent->new(
+        timeout    => $timeout,
+        keep_alive => $keep_alive,
+    );
+    return $ua;
+}
+
+sub base_url {
+    my ($self, $port) = @_;
+    $port //= $self->{port};
+    return "http://127.0.0.1:$port";
 }
 
 # --- Process lifecycle ----------------------------------------------------
@@ -265,8 +287,10 @@ sub http_start {
 
 sub http_end {
     my ($self, $socket, %opts) = @_;
+    return undef unless defined $socket;
     my $timeout = $opts{timeout} || 5;
-    return _http_read($socket, $timeout);
+    my $nresponses = $opts{nresponses} || 0;
+    return _http_read($socket, $timeout, $nresponses);
 }
 
 sub _http_read {
