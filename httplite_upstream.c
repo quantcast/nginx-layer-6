@@ -778,7 +778,7 @@ httplite_upstream_t *httplite_fetch_inactive_upstream(httplite_connection_pool_t
         return (u->active || u->pending_active) ? NULL : u;
     }
 
-    for (ngx_uint_t i = 1; i < num_upstreams; i++) {
+    for (ngx_uint_t i = 1; i <= num_upstreams; i++) {
         upstream_index = (upstream_pool->upstream_index + i) % num_upstreams;
         u = &((httplite_upstream_t*)(upstream_pool->upstreams->elts))[upstream_index];
         if (!u->active && !u->pending_active) {
