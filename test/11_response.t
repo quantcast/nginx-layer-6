@@ -36,8 +36,9 @@ die "nginx failed to start on port $listen_port"
     my $resp = $t->http(
         "GET / HTTP/1.1\r\n"
         . "Host: 127.0.0.1\r\n"
-        . "Connection: close\r\n"
+        . "Connection: keep-alive\r\n"
         . "\r\n",
+        nresponses => 1,
     );
     like($resp, qr{^HTTP/1\.[01] \d{3}},
         'RESP-001: response contains HTTP status line');
@@ -51,8 +52,9 @@ die "nginx failed to start on port $listen_port"
     my $resp = $t->http(
         "GET / HTTP/1.1\r\n"
         . "Host: 127.0.0.1\r\n"
-        . "Connection: close\r\n"
+        . "Connection: keep-alive\r\n"
         . "\r\n",
+        nresponses => 1,
     );
     like($resp, qr/Content-Length:\s*\d+/i,
         'RESP-002: response contains Content-Length header');
@@ -69,10 +71,10 @@ die "nginx failed to start on port $listen_port"
         "POST / HTTP/1.1\r\n"
         . "Host: 127.0.0.1\r\n"
         . "Content-Length: $len\r\n"
-        . "Connection: close\r\n"
+        . "Connection: keep-alive\r\n"
         . "\r\n"
         . $body,
-        timeout => 5,
+        timeout => 5, nresponses => 1,
     );
     like($resp, qr/\Q$body\E/,
         'RESP-003: POST echo body matches exactly');
@@ -90,10 +92,10 @@ die "nginx failed to start on port $listen_port"
         "POST / HTTP/1.1\r\n"
         . "Host: 127.0.0.1\r\n"
         . "Content-Length: $len\r\n"
-        . "Connection: close\r\n"
+        . "Connection: keep-alive\r\n"
         . "\r\n"
         . $body,
-        timeout => 5,
+        timeout => 5, nresponses => 1,
     );
     my $has_body = defined $resp && index($resp, $body) >= 0;
     ok($has_body, 'RESP-004: POST echo preserves special characters');
@@ -107,8 +109,9 @@ die "nginx failed to start on port $listen_port"
     my $resp = $t->http(
         "GET / HTTP/1.1\r\n"
         . "Host: 127.0.0.1\r\n"
-        . "Connection: close\r\n"
+        . "Connection: keep-alive\r\n"
         . "\r\n",
+        nresponses => 1,
     );
     like($resp, qr/\r\n\r\n/,
         'RESP-005: response contains header terminator (\\r\\n\\r\\n)');

@@ -37,7 +37,7 @@ die "nginx failed to start on port $listen_port"
     my $resp = $t->http(
         "GET $long_path HTTP/1.1\r\n"
         . "Host: 127.0.0.1\r\n"
-        . "Connection: close\r\n"
+        . "Connection: keep-alive\r\n"
         . "\r\n",
         timeout => 5,
     );
@@ -59,9 +59,9 @@ die "nginx failed to start on port $listen_port"
         "GET / HTTP/1.1\r\n"
         . "Host: 127.0.0.1\r\n"
         . $headers
-        . "Connection: close\r\n"
+        . "Connection: keep-alive\r\n"
         . "\r\n",
-        timeout => 5,
+        timeout => 5, nresponses => 1,
     );
     my $ok = defined $resp && $resp =~ /HTTP\/1\.[01] [2-5]/;
     ok($ok, 'EDGE-002: 50 custom headers - handled');
@@ -77,7 +77,7 @@ die "nginx failed to start on port $listen_port"
         "GET / HTTP/1.1\r\n"
         . "Host: 127.0.0.1\r\n"
         . "X-Long: $long_val\r\n"
-        . "Connection: close\r\n"
+        . "Connection: keep-alive\r\n"
         . "\r\n",
         timeout => 5,
     );
@@ -108,7 +108,7 @@ die "nginx failed to start on port $listen_port"
 {
     my $resp = $t->http(
         "GET / HTTP/1.1\r\n"
-        . "Connection: close\r\n"
+        . "Connection: keep-alive\r\n"
         . "\r\n",
         timeout => 5,
     );
@@ -127,10 +127,10 @@ die "nginx failed to start on port $listen_port"
         "POST / HTTP/1.1\r\n"
         . "Host: 127.0.0.1\r\n"
         . "Content-Length: 1500\r\n"
-        . "Connection: close\r\n"
+        . "Connection: keep-alive\r\n"
         . "\r\n"
         . $body,
-        timeout => 10,
+        timeout => 10, nresponses => 1,
     );
     like($resp, qr/HTTP\/1\.[01] 200/,
         'EDGE-006: POST body exactly 1500 bytes (SLAB boundary) - 200 response');
@@ -146,10 +146,10 @@ die "nginx failed to start on port $listen_port"
         "POST / HTTP/1.1\r\n"
         . "Host: 127.0.0.1\r\n"
         . "Content-Length: 1499\r\n"
-        . "Connection: close\r\n"
+        . "Connection: keep-alive\r\n"
         . "\r\n"
         . $body,
-        timeout => 10,
+        timeout => 10, nresponses => 1,
     );
     like($resp, qr/HTTP\/1\.[01] 200/,
         'EDGE-007: POST body exactly 1499 bytes - 200 response');
@@ -165,10 +165,10 @@ die "nginx failed to start on port $listen_port"
         "POST / HTTP/1.1\r\n"
         . "Host: 127.0.0.1\r\n"
         . "Content-Length: 1501\r\n"
-        . "Connection: close\r\n"
+        . "Connection: keep-alive\r\n"
         . "\r\n"
         . $body,
-        timeout => 10,
+        timeout => 10, nresponses => 1,
     );
     like($resp, qr/HTTP\/1\.[01] 200/,
         'EDGE-008: POST body exactly 1501 bytes (crosses SLAB boundary) - 200 response');

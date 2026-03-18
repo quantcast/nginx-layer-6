@@ -218,9 +218,10 @@ sub stop {
 sub http {
     my ($self, $request, %opts) = @_;
 
-    my $host    = $opts{host}    || '127.0.0.1';
-    my $port    = $opts{port}    || $self->{port};
-    my $timeout = $opts{timeout} || 5;
+    my $host       = $opts{host}       || '127.0.0.1';
+    my $port       = $opts{port}       || $self->{port};
+    my $timeout    = $opts{timeout}    || 5;
+    my $nresponses = $opts{nresponses} || 0;
 
     my $s = IO::Socket::INET->new(
         PeerAddr => $host,
@@ -230,14 +231,15 @@ sub http {
     );
     return undef unless $s;
 
-    $s->print($request);
+    $s->autoflush(1);
+    $s->syswrite($request);
 
     if ($opts{start}) {
         # Return socket for split send/receive
         return $s;
     }
 
-    return _http_read($s, $timeout);
+    return _http_read($s, $timeout, $nresponses);
 }
 
 sub http_get {
@@ -249,9 +251,10 @@ sub http_get {
                 . "Host: 127.0.0.1:$port\r\n"
                 . "User-Agent: httplite-test/1.0\r\n"
                 . "Accept: */*\r\n"
-                . "Connection: close\r\n"
+                . "Connection: keep-alive\r\n"
                 . "\r\n";
 
+    $opts{nresponses} //= 1;
     return $self->http($request, %opts);
 }
 
@@ -267,10 +270,12 @@ sub http_end {
 }
 
 sub _http_read {
-    my ($s, $timeout) = @_;
+    my ($s, $timeout, $nresponses) = @_;
+    $nresponses //= 0;  # 0 = read until EOF/timeout
 
     my $response = '';
     my $sel = IO::Select->new($s);
+    my $responses_seen = 0;
 
     my $deadline = time() + $timeout;
     while (time() < $deadline) {
@@ -284,11 +289,46 @@ sub _http_read {
                 last;  # EOF or error
             }
             $response .= $buf;
+
+            # Count complete HTTP responses if we have a target
+            if ($nresponses > 0) {
+                $responses_seen = _count_complete_responses($response);
+                last if $responses_seen >= $nresponses;
+            }
         }
     }
 
     $s->close;
     return $response;
+}
+
+# Count the number of complete HTTP responses in a buffer.
+# A complete response has headers ending with \r\n\r\n and a body
+# of Content-Length bytes (or 0 if no Content-Length).
+sub _count_complete_responses {
+    my ($data) = @_;
+    my $count = 0;
+    my $pos = 0;
+
+    while ($pos < length($data)) {
+        my $hdr_end = index($data, "\r\n\r\n", $pos);
+        last if $hdr_end < 0;
+
+        my $headers = substr($data, $pos, $hdr_end - $pos);
+        my $body_start = $hdr_end + 4;
+
+        my $content_length = 0;
+        if ($headers =~ /Content-Length:\s*(\d+)/i) {
+            $content_length = $1;
+        }
+
+        my $total = $body_start + $content_length;
+        last if $total > length($data);
+
+        $count++;
+        $pos = $total;
+    }
+    return $count;
 }
 
 # --- Socket helpers -------------------------------------------------------
@@ -388,20 +428,21 @@ sub echo_daemon {
 sub _echo_handle {
     my ($client) = @_;
 
-    local $/ = undef;
+    $client->autoflush(1);
+
     my $sel = IO::Select->new($client);
     my $buf = '';
 
-    # Read all available data
+    # Read and respond to HTTP requests
     while (1) {
-        my @ready = $sel->can_read(0.5);
+        my @ready = $sel->can_read(2);
         last unless @ready;
         my $data;
         my $n = $client->sysread($data, 65536);
         last if !defined $n || $n == 0;
         $buf .= $data;
 
-        # Try to parse and respond to complete HTTP requests in buffer
+        # Process all complete HTTP requests in buffer
         while ($buf =~ /\r\n\r\n/) {
             my $hdr_end = index($buf, "\r\n\r\n");
             my $headers = substr($buf, 0, $hdr_end);
@@ -428,7 +469,7 @@ sub _echo_handle {
                      . "\r\n"
                      . $resp_body;
 
-            $client->print($resp) or last;
+            $client->syswrite($resp) or last;
         }
     }
 

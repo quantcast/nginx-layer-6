@@ -44,9 +44,9 @@ my $up_port_b = 9072;
             my $resp = $t1->http(
                 "GET / HTTP/1.1\r\n"
                 . "Host: 127.0.0.1\r\n"
-                . "Connection: close\r\n"
+                . "Connection: keep-alive\r\n"
                 . "\r\n",
-                port => 9070,
+                port => 9070, nresponses => 1,
             );
             $all_ok = 0 unless defined $resp && $resp =~ /HTTP\/1\.[01] 200/;
             sleep 0.2;
@@ -80,8 +80,8 @@ my $up_port_b = 9072;
         my $pid_a = fork();
         if ($pid_a == 0) {
             my $r = $t2->http(
-                "GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n",
-                port => 9074, timeout => 5,
+                "GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: keep-alive\r\n\r\n",
+                port => 9074, timeout => 5, nresponses => 1,
             );
             exit(defined $r && $r =~ /HTTP/ ? 0 : 1);
         }
@@ -89,8 +89,8 @@ my $up_port_b = 9072;
         my $pid_b = fork();
         if ($pid_b == 0) {
             my $r = $t2->http(
-                "GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n",
-                port => 9074, timeout => 5,
+                "GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: keep-alive\r\n\r\n",
+                port => 9074, timeout => 5, nresponses => 1,
             );
             exit(defined $r && $r =~ /HTTP/ ? 0 : 1);
         }
@@ -128,8 +128,8 @@ my $up_port_b = 9072;
     } else {
         # Establish connection
         $t3->http(
-            "GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n",
-            port => 9076,
+            "GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: keep-alive\r\n\r\n",
+            port => 9076, nresponses => 1,
         );
 
         # Kill the upstream
@@ -140,7 +140,7 @@ my $up_port_b = 9072;
 
         # Send another request (should fail but not crash nginx)
         $t3->http(
-            "GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n",
+            "GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: keep-alive\r\n\r\n",
             port => 9076, timeout => 3,
         );
         sleep 0.5;
@@ -168,8 +168,8 @@ my $up_port_b = 9072;
     } else {
         # Verify initial connectivity
         $t4->http(
-            "GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n",
-            port => 9078,
+            "GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: keep-alive\r\n\r\n",
+            port => 9078, nresponses => 1,
         );
 
         # Kill and restart upstream
@@ -184,8 +184,8 @@ my $up_port_b = 9072;
 
         # New request should work
         my $resp = $t4->http(
-            "GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n",
-            port => 9078, timeout => 5,
+            "GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: keep-alive\r\n\r\n",
+            port => 9078, timeout => 5, nresponses => 1,
         );
         like($resp, qr/HTTP\/1\.[01] 200/,
             'POOL-004: upstream restart recovery - new request succeeds');
@@ -225,8 +225,8 @@ my $up_port_b = 9072;
             my $pid = fork();
             if ($pid == 0) {
                 my $r = $t5->http(
-                    "GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n",
-                    port => 9079, timeout => 10,
+                    "GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: keep-alive\r\n\r\n",
+                    port => 9079, timeout => 10, nresponses => 1,
                 );
                 exit(defined $r && $r =~ /HTTP/ ? 0 : 1);
             }

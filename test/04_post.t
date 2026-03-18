@@ -37,9 +37,10 @@ die "nginx failed to start on port $listen_port"
         . "Host: 127.0.0.1\r\n"
         . "Content-Length: 5\r\n"
         . "Content-Type: application/x-www-form-urlencoded\r\n"
-        . "Connection: close\r\n"
+        . "Connection: keep-alive\r\n"
         . "\r\n"
         . "hello",
+        nresponses => 1,
     );
     ok(defined $resp && $resp =~ /HTTP\/1\.[01] 200/ && $resp =~ /hello/,
         'POST-001: small POST body (5 bytes) echoed back');
@@ -56,9 +57,10 @@ die "nginx failed to start on port $listen_port"
         . "Host: 127.0.0.1\r\n"
         . "Content-Length: 1024\r\n"
         . "Content-Type: application/x-www-form-urlencoded\r\n"
-        . "Connection: close\r\n"
+        . "Connection: keep-alive\r\n"
         . "\r\n"
         . $body,
+        nresponses => 1,
     );
     like($resp, qr/HTTP\/1\.[01] 200/, 'POST-002: POST body 1024 bytes - 200 response');
 }
@@ -74,10 +76,10 @@ die "nginx failed to start on port $listen_port"
         . "Host: 127.0.0.1\r\n"
         . "Content-Length: 3000\r\n"
         . "Content-Type: application/x-www-form-urlencoded\r\n"
-        . "Connection: close\r\n"
+        . "Connection: keep-alive\r\n"
         . "\r\n"
         . $body,
-        timeout => 10,
+        timeout => 10, nresponses => 1,
     );
     like($resp, qr/HTTP\/1\.[01] 200/,
         'POST-003: POST body 3000 bytes (multi-SLAB) - 200 response');
@@ -94,10 +96,10 @@ die "nginx failed to start on port $listen_port"
         . "Host: 127.0.0.1\r\n"
         . "User-Agent: test\r\n"
         . "Accept: */*\r\n"
-        . "Connection: close\r\n"
+        . "Connection: keep-alive\r\n"
         . "\r\n"
         . "hello",
-        timeout => 5,
+        timeout => 5, nresponses => 1,
     );
     my $got_411 = defined $resp && $resp =~ /HTTP\/1\.[01] 411/;
     ok($got_411, 'POST-004: POST without Content-Length returns 411')
@@ -114,10 +116,10 @@ die "nginx failed to start on port $listen_port"
         "POST / HTTP/1.1\r\n"
         . "Host: 127.0.0.1\r\n"
         . "Content-Length: -1\r\n"
-        . "Connection: close\r\n"
+        . "Connection: keep-alive\r\n"
         . "\r\n"
         . "hello",
-        timeout => 3,
+        timeout => 3, nresponses => 1,
     );
     my $handled = !defined $resp
         || $resp eq ''
@@ -135,10 +137,10 @@ die "nginx failed to start on port $listen_port"
         "POST / HTTP/1.1\r\n"
         . "Host: 127.0.0.1\r\n"
         . "Content-Length: abc\r\n"
-        . "Connection: close\r\n"
+        . "Connection: keep-alive\r\n"
         . "\r\n"
         . "hello",
-        timeout => 3,
+        timeout => 3, nresponses => 1,
     );
     my $handled = !defined $resp
         || $resp eq ''
@@ -156,9 +158,9 @@ die "nginx failed to start on port $listen_port"
         "POST / HTTP/1.1\r\n"
         . "Host: 127.0.0.1\r\n"
         . "Content-Length: 0\r\n"
-        . "Connection: close\r\n"
+        . "Connection: keep-alive\r\n"
         . "\r\n",
-        timeout => 5,
+        timeout => 5, nresponses => 1,
     );
     like($resp, qr/HTTP\/1\.[01] 200/,
         'POST-007: POST with Content-Length: 0 - 200 response');
@@ -173,7 +175,7 @@ die "nginx failed to start on port $listen_port"
         "POST / HTTP/1.1\r\n"
         . "Host: 127.0.0.1\r\n"
         . "Content-Length: 1000\r\n"
-        . "Connection: close\r\n"
+        . "Connection: keep-alive\r\n"
         . "\r\n"
         . "0123456789",
         timeout => 3,

@@ -36,8 +36,8 @@ die "nginx failed to start on port $listen_port"
     my $success = 0;
     for my $i (1..100) {
         my $resp = $t->http(
-            "GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n",
-            timeout => 5,
+            "GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: keep-alive\r\n\r\n",
+            timeout => 5, nresponses => 1,
         );
         $success++ if defined $resp && $resp =~ /HTTP\/1\.[01] 200/;
     }
@@ -57,10 +57,10 @@ die "nginx failed to start on port $listen_port"
             "POST / HTTP/1.1\r\n"
             . "Host: 127.0.0.1\r\n"
             . "Content-Length: 512\r\n"
-            . "Connection: close\r\n"
+            . "Connection: keep-alive\r\n"
             . "\r\n"
             . $body,
-            timeout => 5,
+            timeout => 5, nresponses => 1,
         );
         $success++ if defined $resp && $resp =~ /HTTP\/1\.[01] 200/;
     }
@@ -78,8 +78,8 @@ die "nginx failed to start on port $listen_port"
         my $pid = fork();
         if ($pid == 0) {
             my $r = $t->http(
-                "GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n",
-                timeout => 10,
+                "GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: keep-alive\r\n\r\n",
+                timeout => 10, nresponses => 1,
             );
             exit(defined $r && $r =~ /HTTP/ ? 0 : 1);
         }
@@ -110,15 +110,15 @@ die "nginx failed to start on port $listen_port"
                 "POST / HTTP/1.1\r\n"
                 . "Host: 127.0.0.1\r\n"
                 . "Content-Length: 256\r\n"
-                . "Connection: close\r\n"
+                . "Connection: keep-alive\r\n"
                 . "\r\n"
                 . $body,
-                timeout => 5,
+                timeout => 5, nresponses => 1,
             );
         } else {
             $resp = $t->http(
-                "GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n",
-                timeout => 5,
+                "GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: keep-alive\r\n\r\n",
+                timeout => 5, nresponses => 1,
             );
         }
         $success++ if defined $resp && $resp =~ /HTTP\/1\.[01] 200/;
@@ -136,8 +136,8 @@ die "nginx failed to start on port $listen_port"
     my $start = time();
     for my $i (1..200) {
         my $resp = $t->http(
-            "GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n",
-            timeout => 5,
+            "GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: keep-alive\r\n\r\n",
+            timeout => 5, nresponses => 1,
         );
         $success++ if defined $resp && $resp =~ /HTTP\/1\.[01] 200/;
         # Pace to ~20 req/s

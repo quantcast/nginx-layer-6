@@ -75,7 +75,7 @@ sub count_responses {
 ###############################################################################
 
 {
-    my $resp = $t->http(build_pipelined_gets(3), timeout => 5);
+    my $resp = $t->http(build_pipelined_gets(3), timeout => 5, nresponses => 3);
     my $count = count_responses($resp);
     is($count, 3, 'PIPE-001: 3 pipelined GETs - got 3 responses');
 }
@@ -85,7 +85,7 @@ sub count_responses {
 ###############################################################################
 
 {
-    my $resp = $t->http(build_pipelined_gets(10), timeout => 10);
+    my $resp = $t->http(build_pipelined_gets(10), timeout => 10, nresponses => 10);
     my $count = count_responses($resp);
     is($count, 10, 'PIPE-002: 10 pipelined GETs - got 10 responses');
 }
@@ -95,7 +95,7 @@ sub count_responses {
 ###############################################################################
 
 {
-    my $resp = $t->http(build_pipelined_gets(100), timeout => 30);
+    my $resp = $t->http(build_pipelined_gets(100), timeout => 30, nresponses => 100);
     my $count = count_responses($resp);
     is($count, 100, 'PIPE-003: 100 pipelined GETs - got 100 responses');
 }
@@ -105,7 +105,7 @@ sub count_responses {
 ###############################################################################
 
 {
-    my $resp = $t->http(build_pipelined_gets(1000), timeout => 60);
+    my $resp = $t->http(build_pipelined_gets(1000), timeout => 60, nresponses => 1000);
     my $count = count_responses($resp);
     is($count, 1000, 'PIPE-004: 1000 pipelined GETs - got 1000 responses');
 }
@@ -115,7 +115,7 @@ sub count_responses {
 ###############################################################################
 
 {
-    my $resp = $t->http(build_pipelined_posts(3), timeout => 5);
+    my $resp = $t->http(build_pipelined_posts(3), timeout => 5, nresponses => 3);
     my $count = count_responses($resp);
     is($count, 3, 'PIPE-005: 3 pipelined POSTs - got 3 responses');
 }
@@ -125,7 +125,7 @@ sub count_responses {
 ###############################################################################
 
 {
-    my $resp = $t->http(build_pipelined_posts(10), timeout => 10);
+    my $resp = $t->http(build_pipelined_posts(10), timeout => 10, nresponses => 10);
     my $count = count_responses($resp);
     is($count, 10, 'PIPE-006: 10 pipelined POSTs - got 10 responses');
 }
@@ -157,7 +157,7 @@ sub count_responses {
             . "Connection: keep-alive\r\n"
             . "\r\n";
 
-    my $resp = $t->http($req, timeout => 5);
+    my $resp = $t->http($req, timeout => 5, nresponses => 3);
     my $count = count_responses($resp);
     my $has_body = defined $resp && $resp =~ /mixedtest/;
     ok($count == 3 && $has_body,
@@ -191,7 +191,7 @@ sub count_responses {
         . "\r\n",
     );
 
-    my $resp = $t->http_end($s, timeout => 5);
+    my $resp = $t->http_end($s, timeout => 5, nresponses => 2);
     my $count = count_responses($resp);
     is($count, 2,
         'PIPE-008: pipelined with inter-segment delay - 2 responses');

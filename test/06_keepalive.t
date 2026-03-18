@@ -55,7 +55,7 @@ $t->waitforsocket("127.0.0.1:$upstream_port");
         . "\r\n",
     );
 
-    my $resp = $t1->http_end($s, timeout => 10);
+    my $resp = $t1->http_end($s, timeout => 10, nresponses => 2);
     my @matches = defined $resp ? ($resp =~ /HTTP\/1\.[01] \d+/g) : ();
     is(scalar @matches, 2,
         'KA-001: 2 requests within keep-alive window - both succeed');
@@ -77,9 +77,9 @@ $t->waitforsocket("127.0.0.1:$upstream_port");
         my $resp1 = $t2->http(
             "GET / HTTP/1.1\r\n"
             . "Host: 127.0.0.1\r\n"
-            . "Connection: close\r\n"
+            . "Connection: keep-alive\r\n"
             . "\r\n",
-            port => 9062,
+            port => 9062, nresponses => 1,
         );
         my $ok1 = defined $resp1 && $resp1 =~ /HTTP\/1\.[01] 200/;
 
@@ -89,9 +89,9 @@ $t->waitforsocket("127.0.0.1:$upstream_port");
         my $resp2 = $t2->http(
             "GET / HTTP/1.1\r\n"
             . "Host: 127.0.0.1\r\n"
-            . "Connection: close\r\n"
+            . "Connection: keep-alive\r\n"
             . "\r\n",
-            port => 9062,
+            port => 9062, nresponses => 1,
         );
         my $ok2 = defined $resp2 && $resp2 =~ /HTTP\/1\.[01] 200/;
 
