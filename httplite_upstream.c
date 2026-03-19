@@ -51,7 +51,8 @@ httplite_upstream_t *httplite_create_upstream(ngx_pool_t *pool, ngx_array_t *arr
     socket_address = ngx_pcalloc(pool, socket_length);
 
     if (socket_address == NULL) {
-        fprintf(stderr, "Failed to allocate socket address\n");
+        ngx_log_error(NGX_LOG_ERR, pool->log, 0,
+                      "failed to allocate socket address");
         return NULL;
     }
 
@@ -110,7 +111,8 @@ void httplite_deactivate_upstream(httplite_upstream_t *u) {
     TRACEME("  deactivating upstream %p.\n  call #%d\n\n", u, ++i);
 
     if (!u) {
-        fprintf(stderr, "trying to free an upstream that is null.\n");
+        ngx_log_error(NGX_LOG_ALERT, ngx_cycle->log, 0,
+                      "trying to free an upstream that is null");
         return;
     }
 

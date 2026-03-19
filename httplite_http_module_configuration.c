@@ -17,7 +17,8 @@ ngx_int_t httplite_http_block_initialization(ngx_conf_t *cf) {
 
     // associating configuration with module
     if (httplite_server_init_listening(cf, cscf->port) != NGX_OK) {
-        fprintf(stderr, "Failed to init connection\n");
+        ngx_log_error(NGX_LOG_ERR, cf->log, 0,
+                      "failed to init listening connection");
         return NGX_ERROR;
     }
     return NGX_OK;
