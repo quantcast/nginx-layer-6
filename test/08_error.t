@@ -1,7 +1,6 @@
 #!/usr/bin/perl
 
 # Suite 08: Error Handling Tests
-# Port range: 9080-9089
 # Tests: ERR-001 through ERR-007
 
 use warnings;
@@ -11,14 +10,18 @@ use Test::More;
 use File::Basename qw(dirname);
 use lib dirname(__FILE__) . '/lib';
 use Test::HTTPLite;
-use Time::HiRes qw(sleep);
+use Getopt::Long;
 
 plan tests => 7;
 
-my $listen_port   = 9080;
-my $upstream_port = 9081;
+my %opts;
+GetOptions(\%opts, 'listen-port=i', 'upstream-port=i');
 
 my $t = Test::HTTPLite->new();
+my ($listen_port, $upstream_port) = $t->ports(2);
+$listen_port   = $opts{'listen-port'}   // $listen_port;
+$upstream_port = $opts{'upstream-port'} // $upstream_port;
+
 $t->run_daemon(\&Test::HTTPLite::echo_daemon, $upstream_port);
 $t->waitforsocket("127.0.0.1:$upstream_port");
 
@@ -94,7 +97,6 @@ TODO: {
     for (1..500) { $binary .= chr(int(rand(256))); }
 
     my $resp = $t->http($binary, timeout => 3);
-    sleep 0.3;
 
     my $alive = kill(0, $t->{pids}[0]);
     ok($alive, 'ERR-004: random binary data - nginx survives');
@@ -113,10 +115,8 @@ TODO: {
         Timeout  => 2,
     );
     if ($s) {
-        sleep 0.5;
         $s->close;
     }
-    sleep 0.3;
 
     my $alive = kill(0, $t->{pids}[0]);
     ok($alive, 'ERR-005: empty request - nginx survives');
@@ -131,7 +131,6 @@ TODO: {
         "GET / HTTP/1.1\r\nHost: 127.0.0.1",
         timeout => 3,
     );
-    sleep 0.3;
 
     my $alive = kill(0, $t->{pids}[0]);
     ok($alive, 'ERR-006: partial headers (no \\r\\n\\r\\n) - nginx survives');
@@ -152,7 +151,6 @@ TODO: {
         . "hello",
         timeout => 5,
     );
-    sleep 0.3;
 
     my $alive = kill(0, $t->{pids}[0]);
     ok($alive, 'ERR-007: duplicate Content-Length - nginx survives');

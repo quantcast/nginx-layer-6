@@ -1,7 +1,6 @@
 #!/usr/bin/perl
 
 # Suite 03: Basic GET Request Tests
-# Port range: 9030-9039
 # Tests: GET-001 through GET-004
 
 use warnings;
@@ -11,13 +10,18 @@ use Test::More;
 use File::Basename qw(dirname);
 use lib dirname(__FILE__) . '/lib';
 use Test::HTTPLite;
+use Getopt::Long;
 
 plan tests => 4;
 
-my $listen_port   = 9030;
-my $upstream_port = 9031;
+my %opts;
+GetOptions(\%opts, 'listen-port=i', 'upstream-port=i');
 
 my $t = Test::HTTPLite->new();
+my ($listen_port, $upstream_port) = $t->ports(2);
+$listen_port   = $opts{'listen-port'}   // $listen_port;
+$upstream_port = $opts{'upstream-port'} // $upstream_port;
+
 $t->run_daemon(\&Test::HTTPLite::echo_daemon, $upstream_port);
 $t->waitforsocket("127.0.0.1:$upstream_port");
 

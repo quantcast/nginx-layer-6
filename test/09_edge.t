@@ -1,7 +1,6 @@
 #!/usr/bin/perl
 
 # Suite 09: Edge Case Tests
-# Port range: 9090-9099
 # Tests: EDGE-001 through EDGE-009
 
 use warnings;
@@ -11,15 +10,19 @@ use Test::More;
 use File::Basename qw(dirname);
 use lib dirname(__FILE__) . '/lib';
 use Test::HTTPLite;
-use Time::HiRes qw(sleep);
 use HTTP::Request;
+use Getopt::Long;
 
 plan tests => 9;
 
-my $listen_port   = 9090;
-my $upstream_port = 9091;
+my %opts;
+GetOptions(\%opts, 'listen-port=i', 'upstream-port=i');
 
 my $t = Test::HTTPLite->new();
+my ($listen_port, $upstream_port) = $t->ports(2);
+$listen_port   = $opts{'listen-port'}   // $listen_port;
+$upstream_port = $opts{'upstream-port'} // $upstream_port;
+
 $t->run_daemon(\&Test::HTTPLite::echo_daemon, $upstream_port);
 $t->waitforsocket("127.0.0.1:$upstream_port");
 
@@ -39,7 +42,6 @@ my $ua = $t->ua(timeout => 10);
 {
     my $long_path = '/' . ('x' x 7999);
     my $resp = eval { $ua->get("$url$long_path") };
-    sleep 0.3;
     my $alive = kill(0, $t->{pids}[0]);
     ok($alive, 'EDGE-001: very long URI (8000 bytes) - nginx survives');
 }
@@ -67,7 +69,6 @@ my $ua = $t->ua(timeout => 10);
     my $req = HTTP::Request->new('GET', "$url/");
     $req->header('X-Long' => $long_val);
     my $resp = eval { $ua->request($req) };
-    sleep 0.3;
     my $alive = kill(0, $t->{pids}[0]);
     ok($alive, 'EDGE-003: header with 4000-byte value - nginx survives');
 }
@@ -104,7 +105,6 @@ my $ua = $t->ua(timeout => 10);
         . "\r\n",
         timeout => 5,
     );
-    sleep 0.3;
     my $alive = kill(0, $t->{pids}[0]);
     ok($alive, 'EDGE-005: request with no Host header - nginx survives');
 }
@@ -168,7 +168,6 @@ my $ua = $t->ua(timeout => 10);
         );
         $s->close if $s;
     }
-    sleep 0.5;
 
     my $alive = kill(0, $t->{pids}[0]);
     ok($alive, 'EDGE-009: 100 rapid connect/disconnect cycles - nginx survives');

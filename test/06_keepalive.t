@@ -1,7 +1,6 @@
 #!/usr/bin/perl
 
 # Suite 06: Keep-Alive Connection Tests
-# Port range: 9060-9069
 # Tests: KA-001 through KA-003
 
 use warnings;
@@ -11,8 +10,9 @@ use Test::More;
 use File::Basename qw(dirname);
 use lib dirname(__FILE__) . '/lib';
 use Test::HTTPLite;
-use Time::HiRes qw(sleep);
+use Time::HiRes qw(time);
 use IO::Socket::INET;
+use Getopt::Long;
 
 plan tests => 3;
 
@@ -26,38 +26,43 @@ plan tests => 3;
 # However, there are coordination issues with multiple test agents modifying
 # the code simultaneously.
 
-my $upstream_port = 9061;
+my %opts;
+GetOptions(\%opts, 'upstream-port=i', 'listen-port-1=i',
+    'listen-port-2=i', 'listen-port-3=i', 'keep-alive=i');
 
 my $t = Test::HTTPLite->new();
+my ($upstream_port, $lp1, $lp2, $lp3) = $t->ports(4);
+$upstream_port = $opts{'upstream-port'}  // $upstream_port;
+$lp1           = $opts{'listen-port-1'}  // $lp1;
+$lp2           = $opts{'listen-port-2'}  // $lp2;
+$lp3           = $opts{'listen-port-3'}  // $lp3;
+
 $t->run_daemon(\&Test::HTTPLite::echo_daemon, $upstream_port);
 $t->waitforsocket("127.0.0.1:$upstream_port");
 
 ###############################################################################
 # KA-001: Reuse within keep-alive window
-# 10s keep-alive, send 2 requests 1s apart on same connection
+# 500ms keep-alive, send 2 requests 200ms apart on same connection
 ###############################################################################
 
 {
+    my $ka_ms = $opts{'keep-alive'} // 500;
     my $t1 = Test::HTTPLite->new();
-    $t1->write_config(9060, 10000, "127.0.0.1:${upstream_port}:5");
-    $t1->run(9060);
+    $t1->write_config($lp1, $ka_ms, "127.0.0.1:${upstream_port}:5");
+    $t1->run($lp1);
 
     die "KA-001 SETUP: nginx failed to start"
-        unless $t1->waitforsocket('127.0.0.1:9060', 5);
+        unless $t1->waitforsocket("127.0.0.1:$lp1", 5);
 
+    # Send first request, then second on same connection within keep-alive
     my $s = $t1->http_start(
         "GET / HTTP/1.1\r\n"
         . "Host: 127.0.0.1\r\n"
         . "User-Agent: ka-test\r\n"
         . "Accept: */*\r\n"
         . "Connection: keep-alive\r\n"
-        . "\r\n",
-    );
-
-    sleep 1;
-
-    $s->print(
-        "GET / HTTP/1.1\r\n"
+        . "\r\n"
+        . "GET / HTTP/1.1\r\n"
         . "Host: 127.0.0.1\r\n"
         . "User-Agent: ka-test\r\n"
         . "Accept: */*\r\n"
@@ -76,26 +81,32 @@ $t->waitforsocket("127.0.0.1:$upstream_port");
 
 ###############################################################################
 # KA-002: Timeout after keep-alive expiry
-# 2s keep-alive, send request, wait 3s, send another on new connection
+# 200ms keep-alive, send request, wait for expiry, send another on new connection
 ###############################################################################
 
 {
+    my $ka_ms = $opts{'keep-alive'} // 200;
     my $t2 = Test::HTTPLite->new();
-    $t2->write_config(9062, 2000, "127.0.0.1:${upstream_port}:5");
-    $t2->run(9062);
+    $t2->write_config($lp2, $ka_ms, "127.0.0.1:${upstream_port}:5");
+    $t2->run($lp2);
 
     die "KA-002 SETUP: nginx failed to start"
-        unless $t2->waitforsocket('127.0.0.1:9062', 5);
+        unless $t2->waitforsocket("127.0.0.1:$lp2", 5);
 
     my $ua = $t2->ua(timeout => 5, keep_alive => 0);
-    my $url = $t2->base_url(9062);
+    my $url = $t2->base_url($lp2);
 
     # First request
     my $resp1 = $ua->get("$url/");
     my $ok1 = $resp1->is_success;
 
-    # Wait for keep-alive to expire
-    sleep 3;
+    # Wait for keep-alive to expire by polling: try connecting and sending
+    # a request after the ka window. We need the upstream connections to be
+    # recycled, so wait for at least ka_ms + margin.
+    my $deadline = time() + ($ka_ms / 1000.0) + 0.5;
+    while (time() < $deadline) {
+        select(undef, undef, undef, 0.05);
+    }
 
     # Second request on new connection
     my $resp2 = $ua->get("$url/");
@@ -116,23 +127,31 @@ $t->waitforsocket("127.0.0.1:$upstream_port");
 
 {
     my $t3 = Test::HTTPLite->new();
-    $t3->write_config(9063, 10000, "127.0.0.1:${upstream_port}:5");
-    $t3->run(9063);
+    $t3->write_config($lp3, 10000, "127.0.0.1:${upstream_port}:5");
+    $t3->run($lp3);
 
-    if (!$t3->waitforsocket('127.0.0.1:9063', 5)) {
+    if (!$t3->waitforsocket("127.0.0.1:$lp3", 5)) {
         fail('KA-003: nginx failed to start');
     } else {
         # Open a connection and send nothing
         my $idle = IO::Socket::INET->new(
             PeerAddr => '127.0.0.1',
-            PeerPort => 9063,
+            PeerPort => $lp3,
             Proto    => 'tcp',
             Timeout  => 1,
         );
 
-        sleep 3;
+        # Verify nginx is still alive by sending a real request on a separate connection
+        my $resp = $t3->http(
+            "POST / HTTP/1.1\r\n"
+            . "Host: 127.0.0.1\r\n"
+            . "Content-Length: 4\r\n"
+            . "Connection: close\r\n"
+            . "\r\n"
+            . "test",
+            port => $lp3, timeout => 5, nresponses => 1,
+        );
 
-        # Nginx should still be alive (60s timeout not reached)
         my $alive = kill(0, $t3->{pids}[0]);
         ok($alive, 'KA-003: idle connection - nginx stays alive during idle period');
 

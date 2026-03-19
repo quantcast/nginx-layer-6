@@ -355,6 +355,27 @@ sub _count_complete_responses {
     return $count;
 }
 
+# --- Port allocation ------------------------------------------------------
+
+sub ports {
+    my ($self, $count) = @_;
+    $count //= 1;
+    my @ports;
+    for (1..$count) {
+        my $s = IO::Socket::INET->new(
+            LocalAddr => '127.0.0.1',
+            LocalPort => 0,
+            Proto     => 'tcp',
+            Listen    => 1,
+            ReuseAddr => 1,
+        );
+        die "Cannot allocate port: $!" unless $s;
+        push @ports, $s->sockport();
+        $s->close;
+    }
+    return @ports;
+}
+
 # --- Socket helpers -------------------------------------------------------
 
 sub waitforsocket {

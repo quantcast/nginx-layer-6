@@ -1,8 +1,7 @@
 #!/usr/bin/perl
 
 # Suite 12: Concurrent Routing Correctness Test
-# Port range: 9120-9129
-# Tests: ROUTE-001 through ROUTE-005
+# Tests: ROUTE-001 through ROUTE-N+2
 #
 # Verifies nginx correctly routes responses to the correct client under
 # concurrent load. A custom challenge-response upstream computes f(x) =
@@ -10,7 +9,7 @@
 # request N becomes the input for request N+1. If any response is
 # misrouted, the chain breaks and the client detects it.
 #
-# 10 client processes, 1 non-forking upstream (select-based multiplexer).
+# Default: 10 client processes, 3 non-forking upstreams (select-based multiplexer).
 
 use warnings;
 use strict;
@@ -19,35 +18,44 @@ use Test::More;
 use File::Basename qw(dirname);
 use lib dirname(__FILE__) . '/lib';
 use Test::HTTPLite;
-use Time::HiRes qw(sleep usleep time);
+use Time::HiRes qw(time);
 use IO::Socket::INET;
 use IO::Select;
+use POSIX qw(WNOHANG);
 
 use Getopt::Long;
 
-my $listen_port   = 9120;
-my $upstream_port = 9121;
-my $num_clients   = 10;
-my $num_requests  = 50;
-my $max_retries   = 10;
-my $retry_backoff = 50;     # ms, multiplied by attempt number
-
-GetOptions(
-    'clients=i'  => \$num_clients,
-    'requests=i' => \$num_requests,
-    'retries=i'  => \$max_retries,
-    'backoff=i'  => \$retry_backoff,
+my %opts;
+GetOptions(\%opts,
+    'listen-port=i',
+    'clients=i',
+    'requests=i',
+    'retries=i',
+    'backoff=i',
+    'upstreams=i',
 );
 
-my $pool_size = $num_clients * 5;
+my $num_clients   = $opts{clients}  // 10;
+my $num_requests  = $opts{requests} // 50;
+my $max_retries   = $opts{retries}  // 10;
+my $retry_backoff = $opts{backoff}  // 50;     # ms, multiplied by attempt number
+my $num_upstreams = $opts{upstreams} // 3;
+my $conns_per_upstream = $num_clients * 5;
+
+my $t = Test::HTTPLite->new();
+my ($listen_port, @upstream_ports) = $t->ports(1 + $num_upstreams);
+$listen_port = $opts{'listen-port'} // $listen_port;
 
 plan tests => $num_clients + 2;
 
-my $t = Test::HTTPLite->new();
-$t->run_daemon(\&challenge_daemon, $upstream_port);
-$t->waitforsocket("127.0.0.1:$upstream_port");
+# Start challenge daemons on each upstream port
+for my $up_port (@upstream_ports) {
+    $t->run_daemon(\&challenge_daemon, $up_port);
+    $t->waitforsocket("127.0.0.1:$up_port");
+}
 
-$t->write_config($listen_port, 10000, "127.0.0.1:${upstream_port}:${pool_size}");
+my @upstream_specs = map { "127.0.0.1:$_:$conns_per_upstream" } @upstream_ports;
+$t->write_config($listen_port, 10000, @upstream_specs);
 $t->run($listen_port);
 
 die "nginx failed to start on port $listen_port"
@@ -79,7 +87,7 @@ die "nginx failed to start on port $listen_port"
 }
 
 ###############################################################################
-# ROUTE-002 through ROUTE-011: 10 concurrent clients, 50 chained requests each
+# ROUTE-002 through ROUTE-N+1: concurrent clients, chained requests each
 ###############################################################################
 
 my $tempdir = $t->testdir();
@@ -116,12 +124,12 @@ for my $pid (@children) {
     if ($remaining > 0) {
         my $exited = 0;
         while (time() < $deadline) {
-            my $r = waitpid($pid, 1);    # WNOHANG
+            my $r = waitpid($pid, WNOHANG);
             if ($r > 0 || $r == -1) {
                 $exited = 1;
                 last;
             }
-            usleep(50_000);              # 50ms poll
+            select(undef, undef, undef, 0.05);  # 50ms poll
         }
         if (!$exited) {
             kill 9, $pid;
@@ -168,9 +176,17 @@ for my $cid (1..$num_clients) {
 ###############################################################################
 
 {
-    sleep 0.5;
-    my $daemon_alive = kill(0, $t->{daemons}[0]);
-    diag("daemon (pid=$t->{daemons}[0]) alive=$daemon_alive") unless $daemon_alive;
+    # Verify nginx is alive by sending a probe request
+    my $resp = $t->http(
+        "POST / HTTP/1.1\r\n"
+        . "Host: 127.0.0.1\r\n"
+        . "Content-Length: 8\r\n"
+        . "Connection: close\r\n"
+        . "\r\n"
+        . "c0:0:100",
+        port => $listen_port, timeout => 5, nresponses => 1,
+    );
+
     my $alive = kill(0, $t->{pids}[0]);
     my $test_id = sprintf('ROUTE-%03d', $num_clients + 2);
     ok($alive, "$test_id: nginx survived concurrent routing load");
@@ -179,6 +195,83 @@ for my $cid (1..$num_clients) {
 ###############################################################################
 # Subroutines
 ###############################################################################
+
+# --- Read a complete HTTP response from a socket ---
+#
+# Returns the response string, or '' on timeout/error.
+
+sub read_http_response {
+    my ($socket, $timeout) = @_;
+    $timeout //= 5;
+
+    my $sel = IO::Select->new($socket);
+    my $response = '';
+    my $read_deadline = time() + $timeout;
+
+    while (time() < $read_deadline) {
+        my $left = $read_deadline - time();
+        last if $left <= 0;
+        my @ready = $sel->can_read($left < 0.5 ? $left : 0.5);
+        if (@ready) {
+            my $buf;
+            my $n = $socket->sysread($buf, 65536);
+            last if !defined $n || $n == 0;
+            $response .= $buf;
+
+            if ($response =~ /\r\n\r\n/) {
+                my $hdr_end = index($response, "\r\n\r\n");
+                my $cl = 0;
+                if ($response =~ /Content-Length:\s*(\d+)/i) {
+                    $cl = $1;
+                }
+                last if length($response) >= $hdr_end + 4 + $cl;
+            }
+        }
+    }
+
+    return $response;
+}
+
+# --- Send a single HTTP request with retries ---
+#
+# Returns ($response, $retries_used).
+
+sub send_one_request {
+    my ($port, $request, $max_tries, $backoff_ms) = @_;
+
+    my $response = '';
+    my $retries = 0;
+
+    for my $try (1..$max_tries) {
+        my $s = IO::Socket::INET->new(
+            PeerAddr => '127.0.0.1',
+            PeerPort => $port,
+            Proto    => 'tcp',
+            Timeout  => 5,
+        );
+
+        if (!$s) {
+            $retries++;
+            select(undef, undef, undef, $backoff_ms * $try / 1000.0);
+            next;
+        }
+
+        $s->autoflush(1);
+        $s->syswrite($request);
+        $response = read_http_response($s, 5);
+        $s->close;
+
+        # Retry on transient upstream pool errors
+        if ($response =~ /inactive upstream/i) {
+            $retries++;
+            select(undef, undef, undef, $backoff_ms * $try / 1000.0);
+            next;
+        }
+        last;    # got a real response
+    }
+
+    return ($response, $retries);
+}
 
 # --- Client process (forked child) ---
 #
@@ -208,61 +301,7 @@ sub run_client {
                     . "\r\n"
                     . $body;
 
-        # Retry transient upstream pool errors
-        my $response = '';
-        my $retries = 0;
-
-        for my $try (1..$max_retries) {
-            my $s = IO::Socket::INET->new(
-                PeerAddr => '127.0.0.1',
-                PeerPort => $port,
-                Proto    => 'tcp',
-                Timeout  => 5,
-            );
-
-            if (!$s) {
-                $retries++;
-                usleep($retry_backoff * 1000 * $try);
-                next;
-            }
-
-            $s->autoflush(1);
-            $s->syswrite($request);
-
-            # Read response; parse HTTP to detect completion
-            my $sel = IO::Select->new($s);
-            $response = '';
-            my $read_deadline = time() + 5;
-            while (time() < $read_deadline) {
-                my $left = $read_deadline - time();
-                last if $left <= 0;
-                my @ready = $sel->can_read($left < 0.5 ? $left : 0.5);
-                if (@ready) {
-                    my $buf;
-                    my $n = $s->sysread($buf, 65536);
-                    last if !defined $n || $n == 0;
-                    $response .= $buf;
-
-                    if ($response =~ /\r\n\r\n/) {
-                        my $hdr_end = index($response, "\r\n\r\n");
-                        my $cl = 0;
-                        if ($response =~ /Content-Length:\s*(\d+)/i) {
-                            $cl = $1;
-                        }
-                        last if length($response) >= $hdr_end + 4 + $cl;
-                    }
-                }
-            }
-            $s->close;
-
-            # Retry on transient upstream pool errors
-            if ($response =~ /inactive upstream/i) {
-                $retries++;
-                usleep($retry_backoff * 1000 * $try);
-                next;
-            }
-            last;    # got a real response
-        }
+        my ($response, $retries) = send_one_request($port, $request, $max_retries, $retry_backoff);
         $upstream_errors += $retries;
 
         # Skip if all retries exhausted (upstream pool error, not routing error)
@@ -299,6 +338,60 @@ sub run_client {
     exit(@misroutes ? 1 : 0);
 }
 
+# --- Handle a single challenge request body ---
+#
+# Parses "c${id}:${seq}:${value}" and returns the response body.
+
+sub handle_challenge_request {
+    my ($body) = @_;
+
+    if ($body =~ /^(c\d+):(\d+):(\d+)$/) {
+        my ($cid, $seq, $val) = ($1, $2, $3);
+        my $answer = ($val * 7 + 3) % 1_000_000;
+        return "$cid:$seq:$answer";
+    }
+    return "ERROR:bad_format";
+}
+
+# --- Process buffered HTTP requests and send responses ---
+#
+# Parses complete HTTP requests from $buf_ref, sends responses via $fh.
+# Returns 0 on success, 1 if the connection should be closed (write error).
+
+sub process_buffered_requests {
+    my ($fh, $buf_ref) = @_;
+
+    while ($$buf_ref =~ /\r\n\r\n/) {
+        my $hdr_end = index($$buf_ref, "\r\n\r\n");
+        my $headers = substr($$buf_ref, 0, $hdr_end);
+        my $body_start = $hdr_end + 4;
+
+        my $content_length = 0;
+        if ($headers =~ /Content-Length:\s*(\d+)/i) {
+            $content_length = $1;
+        }
+
+        my $total_needed = $body_start + $content_length;
+        last if length($$buf_ref) < $total_needed;
+
+        my $body = substr($$buf_ref, $body_start, $content_length);
+        $$buf_ref = substr($$buf_ref, $total_needed);
+
+        my $resp_body = handle_challenge_request($body);
+
+        my $resp = "HTTP/1.1 200 OK\r\n"
+                 . "Content-Length: " . length($resp_body) . "\r\n"
+                 . "Content-Type: text/plain\r\n"
+                 . "Connection: keep-alive\r\n"
+                 . "\r\n"
+                 . $resp_body;
+
+        return 1 unless $fh->syswrite($resp);
+    }
+
+    return 0;
+}
+
 # --- Challenge-response upstream daemon (non-forking, select-based) ---
 
 sub challenge_daemon {
@@ -322,14 +415,12 @@ sub challenge_daemon {
         my @ready = $sel->can_read(1);
         for my $fh (@ready) {
             if ($fh == $server) {
-                # New connection
                 my $client = $server->accept();
                 next unless $client;
                 $client->autoflush(1);
                 $sel->add($client);
                 $bufs{fileno($client)} = '';
             } else {
-                # Data from existing connection
                 my $data;
                 my $n = $fh->sysread($data, 65536);
                 if (!defined $n || $n == 0) {
@@ -342,46 +433,10 @@ sub challenge_daemon {
                 my $fd = fileno($fh);
                 $bufs{$fd} .= $data;
 
-                # Process all complete HTTP requests in buffer
-                while ($bufs{$fd} =~ /\r\n\r\n/) {
-                    my $hdr_end = index($bufs{$fd}, "\r\n\r\n");
-                    my $headers = substr($bufs{$fd}, 0, $hdr_end);
-                    my $body_start = $hdr_end + 4;
-
-                    my $content_length = 0;
-                    if ($headers =~ /Content-Length:\s*(\d+)/i) {
-                        $content_length = $1;
-                    }
-
-                    my $total_needed = $body_start + $content_length;
-                    last if length($bufs{$fd}) < $total_needed;
-
-                    my $body = substr($bufs{$fd}, $body_start, $content_length);
-                    $bufs{$fd} = substr($bufs{$fd}, $total_needed);
-
-                    # Challenge-response: parse "c${id}:${seq}:${value}"
-                    my $resp_body;
-                    if ($body =~ /^(c\d+):(\d+):(\d+)$/) {
-                        my ($cid, $seq, $val) = ($1, $2, $3);
-                        my $answer = ($val * 7 + 3) % 1_000_000;
-                        $resp_body = "$cid:$seq:$answer";
-                    } else {
-                        $resp_body = "ERROR:bad_format";
-                    }
-
-                    my $resp = "HTTP/1.1 200 OK\r\n"
-                             . "Content-Length: " . length($resp_body) . "\r\n"
-                             . "Content-Type: text/plain\r\n"
-                             . "Connection: keep-alive\r\n"
-                             . "\r\n"
-                             . $resp_body;
-
-                    if (!$fh->syswrite($resp)) {
-                        $sel->remove($fh);
-                        delete $bufs{$fd};
-                        $fh->close;
-                        last;
-                    }
+                if (process_buffered_requests($fh, \$bufs{$fd})) {
+                    $sel->remove($fh);
+                    delete $bufs{$fd};
+                    $fh->close;
                 }
             }
         }

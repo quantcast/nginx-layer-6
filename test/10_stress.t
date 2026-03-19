@@ -1,7 +1,6 @@
 #!/usr/bin/perl
 
 # Suite 10: Stress Tests
-# Port range: 9100-9109
 # Tests: STRESS-001 through STRESS-005
 # Converted to use structured request helpers instead of raw socket operations
 
@@ -12,14 +11,19 @@ use Test::More;
 use File::Basename qw(dirname);
 use lib dirname(__FILE__) . '/lib';
 use Test::HTTPLite;
-use Time::HiRes qw(sleep time);
+use Time::HiRes qw(time);
+use Getopt::Long;
 
 plan tests => 5;
 
-my $listen_port   = 9100;
-my $upstream_port = 9101;
+my %opts;
+GetOptions(\%opts, 'listen-port=i', 'upstream-port=i', 'iterations=i');
 
 my $t = Test::HTTPLite->new();
+my ($listen_port, $upstream_port) = $t->ports(2);
+$listen_port   = $opts{'listen-port'}   // $listen_port;
+$upstream_port = $opts{'upstream-port'} // $upstream_port;
+
 $t->run_daemon(\&Test::HTTPLite::echo_daemon, $upstream_port);
 $t->waitforsocket("127.0.0.1:$upstream_port");
 

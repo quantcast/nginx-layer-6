@@ -1,7 +1,6 @@
 #!/usr/bin/perl
 
 # Suite 05: HTTP Pipelining Tests
-# Port range: 9050-9059
 # Tests: PIPE-001 through PIPE-008
 
 use warnings;
@@ -11,14 +10,18 @@ use Test::More;
 use File::Basename qw(dirname);
 use lib dirname(__FILE__) . '/lib';
 use Test::HTTPLite;
-use Time::HiRes qw(sleep);
+use Getopt::Long;
 
 plan tests => 8;
 
-my $listen_port   = 9050;
-my $upstream_port = 9051;
+my %opts;
+GetOptions(\%opts, 'listen-port=i', 'upstream-port=i');
 
 my $t = Test::HTTPLite->new();
+my ($listen_port, $upstream_port) = $t->ports(2);
+$listen_port   = $opts{'listen-port'}   // $listen_port;
+$upstream_port = $opts{'upstream-port'} // $upstream_port;
+
 $t->run_daemon(\&Test::HTTPLite::echo_daemon, $upstream_port);
 $t->waitforsocket("127.0.0.1:$upstream_port");
 
@@ -200,8 +203,6 @@ sub count_responses {
         . "Connection: keep-alive\r\n"
         . "\r\n",
     );
-
-    sleep 0.2;
 
     $s->print(
         "GET / HTTP/1.1\r\n"

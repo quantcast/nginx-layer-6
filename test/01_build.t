@@ -1,7 +1,6 @@
 #!/usr/bin/perl
 
 # Suite 01: Build & Startup Tests
-# Port range: 9010-9019
 # Tests: BUILD-001, BUILD-002, BUILD-003
 
 use warnings;
@@ -11,11 +10,17 @@ use Test::More;
 use File::Basename qw(dirname);
 use lib dirname(__FILE__) . '/lib';
 use Test::HTTPLite;
+use Getopt::Long;
 
 plan tests => 3;
 
+my %opts;
+GetOptions(\%opts, 'listen-port=i', 'upstream-port=i');
+
 my $t = Test::HTTPLite->new();
-my $upstream_port = 9011;
+my ($listen_port, $upstream_port) = $t->ports(2);
+$listen_port   = $opts{'listen-port'}   // $listen_port;
+$upstream_port = $opts{'upstream-port'} // $upstream_port;
 
 ###############################################################################
 # BUILD-001: nginx binary exists and is executable
@@ -30,18 +35,18 @@ ok(-x $t->{binary}, 'BUILD-001: nginx binary exists and is executable');
 $t->run_daemon(\&Test::HTTPLite::echo_daemon, $upstream_port);
 $t->waitforsocket("127.0.0.1:$upstream_port");
 
-$t->write_config(9010, 10000, "127.0.0.1:${upstream_port}:5");
-$t->run(9010);
+$t->write_config($listen_port, 10000, "127.0.0.1:${upstream_port}:5");
+$t->run($listen_port);
 
-ok($t->waitforsocket('127.0.0.1:9010', 5),
-    'BUILD-002: nginx starts and listens on port 9010');
+ok($t->waitforsocket("127.0.0.1:$listen_port", 5),
+    'BUILD-002: nginx starts and listens on configured port');
 
 ###############################################################################
 # BUILD-003: nginx exits cleanly on SIGQUIT
 ###############################################################################
 
 SKIP: {
-    skip 'nginx not running', 1 unless $t->waitforsocket('127.0.0.1:9010', 1);
+    skip 'nginx not running', 1 unless $t->waitforsocket("127.0.0.1:$listen_port", 1);
 
     my $pid = $t->{pids}[0];
     kill POSIX::SIGQUIT, $pid;
@@ -53,7 +58,7 @@ SKIP: {
             $exited = 1;
             last;
         }
-        Time::HiRes::sleep(0.05);
+        select(undef, undef, undef, 0.05);
     }
 
     if ($exited) {

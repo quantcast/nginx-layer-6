@@ -1,7 +1,6 @@
 #!/usr/bin/perl
 
 # Suite 07: Upstream Connection Pool Tests
-# Port range: 9070-9079
 # Tests: POOL-001 through POOL-005
 
 use warnings;
@@ -11,14 +10,29 @@ use Test::More;
 use File::Basename qw(dirname);
 use lib dirname(__FILE__) . '/lib';
 use Test::HTTPLite;
-use Time::HiRes qw(sleep);
 use POSIX qw(SIGTERM SIGKILL WNOHANG);
 use LWP::UserAgent;
+use Getopt::Long;
 
 plan tests => 5;
 
-my $up_port_a = 9071;
-my $up_port_b = 9072;
+my %opts;
+GetOptions(\%opts, 'upstream-port-a=i', 'upstream-port-b=i');
+
+my $t = Test::HTTPLite->new();
+
+# Allocate all ports: 2 shared upstream + 5 listen + 3 extra upstream for sub-tests
+my @ports = $t->ports(10);
+my $up_port_a = $opts{'upstream-port-a'} // $ports[0];
+my $up_port_b = $opts{'upstream-port-b'} // $ports[1];
+my $lp1 = $ports[2];  # POOL-001
+my $lp2 = $ports[3];  # POOL-002
+my $up_port_c = $ports[4];
+my $lp3 = $ports[5];  # POOL-003
+my $up_port_d = $ports[6];
+my $lp4 = $ports[7];  # POOL-004
+my $up_port_e = $ports[8];
+my $lp5 = $ports[9];  # POOL-005
 
 ###############################################################################
 # POOL-001: Round-robin across 2 pools
@@ -31,21 +45,20 @@ my $up_port_b = 9072;
     $t1->waitforsocket("127.0.0.1:$up_port_a");
     $t1->waitforsocket("127.0.0.1:$up_port_b");
 
-    $t1->write_config(9070, 10000,
+    $t1->write_config($lp1, 10000,
         "127.0.0.1:${up_port_a}:1",
         "127.0.0.1:${up_port_b}:1");
-    $t1->run(9070);
+    $t1->run($lp1);
 
-    if (!$t1->waitforsocket('127.0.0.1:9070', 5)) {
+    if (!$t1->waitforsocket("127.0.0.1:$lp1", 5)) {
         fail('POOL-001: nginx failed to start');
     } else {
         # Send 4 sequential requests using LWP
         my $ua = LWP::UserAgent->new(timeout => 10, keep_alive => 1);
         my $all_ok = 1;
         for (1..4) {
-            my $resp = $ua->get("http://127.0.0.1:9070/");
+            my $resp = $ua->get("http://127.0.0.1:$lp1/");
             $all_ok = 0 unless $resp->is_success;
-            sleep 0.2;
         }
         # Both upstreams should have received traffic (round-robin)
         TODO: {
@@ -62,29 +75,28 @@ my $up_port_b = 9072;
 ###############################################################################
 
 {
-    my $up_port_c = 9073;
     my $t2 = Test::HTTPLite->new();
     $t2->run_daemon(\&Test::HTTPLite::echo_daemon, $up_port_c);
     $t2->waitforsocket("127.0.0.1:$up_port_c");
 
-    $t2->write_config(9074, 10000, "127.0.0.1:${up_port_c}:1");
-    $t2->run(9074);
+    $t2->write_config($lp2, 10000, "127.0.0.1:${up_port_c}:1");
+    $t2->run($lp2);
 
-    if (!$t2->waitforsocket('127.0.0.1:9074', 5)) {
+    if (!$t2->waitforsocket("127.0.0.1:$lp2", 5)) {
         fail('POOL-002: nginx failed to start');
     } else {
         # Send 2 concurrent requests with connections=1 using LWP in forked children
         my $pid_a = fork();
         if ($pid_a == 0) {
             my $child_ua = LWP::UserAgent->new(timeout => 5, keep_alive => 1);
-            my $r = $child_ua->get("http://127.0.0.1:9074/");
+            my $r = $child_ua->get("http://127.0.0.1:$lp2/");
             exit($r->is_success ? 0 : 1);
         }
 
         my $pid_b = fork();
         if ($pid_b == 0) {
             my $child_ua = LWP::UserAgent->new(timeout => 5, keep_alive => 1);
-            my $r = $child_ua->get("http://127.0.0.1:9074/");
+            my $r = $child_ua->get("http://127.0.0.1:$lp2/");
             exit($r->is_success ? 0 : 1);
         }
 
@@ -110,35 +122,31 @@ my $up_port_b = 9072;
 ###############################################################################
 
 {
-    my $up_port_d = 9075;
     my $t3 = Test::HTTPLite->new();
     my $daemon_pid = $t3->run_daemon(\&Test::HTTPLite::echo_daemon, $up_port_d);
     $t3->waitforsocket("127.0.0.1:$up_port_d");
 
-    $t3->write_config(9076, 10000, "127.0.0.1:${up_port_d}:5");
-    $t3->run(9076);
+    $t3->write_config($lp3, 10000, "127.0.0.1:${up_port_d}:5");
+    $t3->run($lp3);
 
-    if (!$t3->waitforsocket('127.0.0.1:9076', 5)) {
+    if (!$t3->waitforsocket("127.0.0.1:$lp3", 5)) {
         fail('POOL-003: nginx failed to start');
     } else {
         # Establish connection using LWP
         my $ua = LWP::UserAgent->new(timeout => 10, keep_alive => 1);
-        $ua->get("http://127.0.0.1:9076/");
+        $ua->get("http://127.0.0.1:$lp3/");
 
-        # Kill the upstream
+        # Kill the upstream and wait for it to exit
         kill SIGTERM, $daemon_pid;
-        sleep 0.5;
-        kill SIGKILL, $daemon_pid;
-        waitpid($daemon_pid, WNOHANG);
+        waitpid($daemon_pid, 0);
 
         # Send another request (should fail but not crash nginx)
         eval {
             local $SIG{ALRM} = sub { die "timeout\n" };
             alarm(3);
-            $ua->get("http://127.0.0.1:9076/");
+            $ua->get("http://127.0.0.1:$lp3/");
             alarm(0);
         };
-        sleep 0.5;
 
         my $alive = kill(0, $t3->{pids}[0]);
         ok($alive, 'POOL-003: upstream dies mid-session - nginx survives');
@@ -150,33 +158,31 @@ my $up_port_b = 9072;
 ###############################################################################
 
 {
-    my $up_port_e = 9077;
     my $t4 = Test::HTTPLite->new();
     my $daemon_pid = $t4->run_daemon(\&Test::HTTPLite::echo_daemon, $up_port_e);
     $t4->waitforsocket("127.0.0.1:$up_port_e");
 
-    $t4->write_config(9078, 10000, "127.0.0.1:${up_port_e}:5");
-    $t4->run(9078);
+    $t4->write_config($lp4, 10000, "127.0.0.1:${up_port_e}:5");
+    $t4->run($lp4);
 
-    if (!$t4->waitforsocket('127.0.0.1:9078', 5)) {
+    if (!$t4->waitforsocket("127.0.0.1:$lp4", 5)) {
         fail('POOL-004: nginx failed to start');
     } else {
         # Verify initial connectivity using LWP
         my $ua = LWP::UserAgent->new(timeout => 10, keep_alive => 1);
-        $ua->get("http://127.0.0.1:9078/");
+        $ua->get("http://127.0.0.1:$lp4/");
 
-        # Kill and restart upstream
+        # Kill upstream and wait for full exit + port release
         kill SIGTERM, $daemon_pid;
-        sleep 0.5;
-        kill SIGKILL, $daemon_pid;
-        waitpid($daemon_pid, WNOHANG);
-        sleep 0.5;
+        waitpid($daemon_pid, 0);
+        $t4->waitforportclose($up_port_e);
 
+        # Restart upstream
         $t4->run_daemon(\&Test::HTTPLite::echo_daemon, $up_port_e);
         $t4->waitforsocket("127.0.0.1:$up_port_e");
 
         # New request should work
-        my $resp = $ua->get("http://127.0.0.1:9078/");
+        my $resp = $ua->get("http://127.0.0.1:$lp4/");
         TODO: {
             local $TODO = 'GET response forwarding bug';
             ok($resp->is_success,
@@ -191,25 +197,24 @@ my $up_port_b = 9072;
 ###############################################################################
 
 {
-    my $up_port_f = 9073;
-    my $up_port_g = 9075;
-    my $up_port_h = 9077;
+    # Reuse upstream ports from earlier tests that have been cleaned up
+    my ($up_f, $up_g, $up_h) = $t->ports(3);
 
     my $t5 = Test::HTTPLite->new();
-    $t5->run_daemon(\&Test::HTTPLite::echo_daemon, $up_port_f);
-    $t5->run_daemon(\&Test::HTTPLite::echo_daemon, $up_port_g);
-    $t5->run_daemon(\&Test::HTTPLite::echo_daemon, $up_port_h);
-    $t5->waitforsocket("127.0.0.1:$up_port_f");
-    $t5->waitforsocket("127.0.0.1:$up_port_g");
-    $t5->waitforsocket("127.0.0.1:$up_port_h");
+    $t5->run_daemon(\&Test::HTTPLite::echo_daemon, $up_f);
+    $t5->run_daemon(\&Test::HTTPLite::echo_daemon, $up_g);
+    $t5->run_daemon(\&Test::HTTPLite::echo_daemon, $up_h);
+    $t5->waitforsocket("127.0.0.1:$up_f");
+    $t5->waitforsocket("127.0.0.1:$up_g");
+    $t5->waitforsocket("127.0.0.1:$up_h");
 
-    $t5->write_config(9079, 10000,
-        "127.0.0.1:${up_port_f}:30",
-        "127.0.0.1:${up_port_g}:30",
-        "127.0.0.1:${up_port_h}:30");
-    $t5->run(9079);
+    $t5->write_config($lp5, 10000,
+        "127.0.0.1:${up_f}:30",
+        "127.0.0.1:${up_g}:30",
+        "127.0.0.1:${up_h}:30");
+    $t5->run($lp5);
 
-    if (!$t5->waitforsocket('127.0.0.1:9079', 5)) {
+    if (!$t5->waitforsocket("127.0.0.1:$lp5", 5)) {
         fail('POOL-005: nginx failed to start');
     } else {
         # Send 90 concurrent requests via forked children using LWP
@@ -218,7 +223,7 @@ my $up_port_b = 9072;
             my $pid = fork();
             if ($pid == 0) {
                 my $child_ua = LWP::UserAgent->new(timeout => 10, keep_alive => 1);
-                my $r = $child_ua->get("http://127.0.0.1:9079/");
+                my $r = $child_ua->get("http://127.0.0.1:$lp5/");
                 exit($r->is_success ? 0 : 1);
             }
             push @children, $pid;

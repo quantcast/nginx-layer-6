@@ -1,7 +1,6 @@
 #!/usr/bin/perl
 
 # Suite 02: Configuration Parsing Tests
-# Port range: 9020-9029
 # Tests: CFG-001 through CFG-009
 
 use warnings;
@@ -11,14 +10,22 @@ use Test::More;
 use File::Basename qw(dirname);
 use lib dirname(__FILE__) . '/lib';
 use Test::HTTPLite;
+use Getopt::Long;
 
 plan tests => 9;
 
-my $up_port_a = 9021;
-my $up_port_b = 9022;
+my %opts;
+GetOptions(\%opts, 'upstream-port-a=i', 'upstream-port-b=i');
+
+my $t = Test::HTTPLite->new();
+
+# Allocate all ports needed: 2 shared upstreams + 9 listen ports for sub-tests
+my @ports = $t->ports(11);
+my $up_port_a = $opts{'upstream-port-a'} // $ports[0];
+my $up_port_b = $opts{'upstream-port-b'} // $ports[1];
+my @listen_ports = @ports[2..10];  # 9 listen ports for CFG-001 through CFG-009
 
 # Start upstream servers
-my $t = Test::HTTPLite->new();
 $t->run_daemon(\&Test::HTTPLite::echo_daemon, $up_port_a);
 $t->run_daemon(\&Test::HTTPLite::echo_daemon, $up_port_b);
 $t->waitforsocket("127.0.0.1:$up_port_a");
@@ -30,9 +37,9 @@ $t->waitforsocket("127.0.0.1:$up_port_b");
 
 {
     my $t1 = Test::HTTPLite->new();
-    $t1->write_config(9020, 10000, "127.0.0.1:${up_port_a}:5");
-    $t1->run(9020);
-    ok($t1->waitforsocket('127.0.0.1:9020', 5),
+    $t1->write_config($listen_ports[0], 10000, "127.0.0.1:${up_port_a}:5");
+    $t1->run($listen_ports[0]);
+    ok($t1->waitforsocket("127.0.0.1:$listen_ports[0]", 5),
         'CFG-001: valid minimal config starts successfully');
 }
 
@@ -79,7 +86,7 @@ error_log __TEMPDIR__/error.log debug;
 events { worker_connections 512; }
 httplite {
     server {
-        listen 9023;
+        listen $listen_ports[2];
         server_name 127.0.0.1;
     }
 }
@@ -132,17 +139,17 @@ CONF
 
 {
     my $t5 = Test::HTTPLite->new();
-    $t5->write_config(9024, 10000,
+    $t5->write_config($listen_ports[4], 10000,
         "127.0.0.1:${up_port_a}:5",
         "127.0.0.1:${up_port_b}:5");
-    $t5->run(9024);
+    $t5->run($listen_ports[4]);
 
     my $got_traffic = 0;
-    if ($t5->waitforsocket('127.0.0.1:9024', 5)) {
+    if ($t5->waitforsocket("127.0.0.1:$listen_ports[4]", 5)) {
         # Original test doesn't check responses - just sends requests
         # Keeping original behavior to match test expectations
         for (1..4) {
-            $t5->http_get('/', port => 9024);
+            $t5->http_get('/', port => $listen_ports[4]);
         }
         $got_traffic = 1;  # If we got here without errors, traffic flowed
     }
@@ -166,7 +173,7 @@ error_log __TEMPDIR__/error.log debug;
 events { worker_connections 512; }
 httplite {
     server {
-        listen 9025;
+        listen $listen_ports[5];
         server_name 127.0.0.1;
     }
     upstreams {
@@ -203,12 +210,12 @@ TODO: {
     local $TODO = 'HTTPLite module not forwarding requests (possible upstream bug)';
 
     my $t7 = Test::HTTPLite->new();
-    $t7->write_config(9026, 0, "127.0.0.1:${up_port_a}:5");
-    $t7->run(9026);
+    $t7->write_config($listen_ports[6], 0, "127.0.0.1:${up_port_a}:5");
+    $t7->run($listen_ports[6]);
 
     my $resp = $t7->http(
         "POST / HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 4\r\nConnection: close\r\n\r\ntest",
-        port => 9026, timeout => 5,
+        port => $listen_ports[6], timeout => 5,
     );
     my $ok = defined $resp && $resp =~ m{HTTP/1\.[01] 200};
     ok($ok, 'CFG-007: keep_alive 0 - server starts and handles requests');
@@ -227,7 +234,7 @@ error_log __TEMPDIR__/error.log debug;
 events { worker_connections 512; }
 httplite {
     server {
-        listen 9027;
+        listen $listen_ports[7];
         server_name 127.0.0.1;
     }
     upstreams {
@@ -266,7 +273,7 @@ error_log __TEMPDIR__/error.log debug;
 events { worker_connections 512; }
 httplite {
     server {
-        listen 9028;
+        listen $listen_ports[8];
         server_name 127.0.0.1;
     }
     upstreams {
