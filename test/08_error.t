@@ -96,7 +96,7 @@ TODO: {
     my $binary = '';
     for (1..500) { $binary .= chr(int(rand(256))); }
 
-    my $resp = $t->http($binary, timeout => 3);
+    my $resp = $t->http($binary, timeout => 1);
 
     my $alive = kill(0, $t->{pids}[0]);
     ok($alive, 'ERR-004: random binary data - nginx survives');
@@ -129,7 +129,7 @@ TODO: {
 {
     my $resp = $t->http(
         "GET / HTTP/1.1\r\nHost: 127.0.0.1",
-        timeout => 3,
+        timeout => 1,
     );
 
     my $alive = kill(0, $t->{pids}[0]);
@@ -149,7 +149,7 @@ TODO: {
         . "Connection: keep-alive\r\n"
         . "\r\n"
         . "hello",
-        timeout => 5,
+        timeout => 2,
     );
 
     my $alive = kill(0, $t->{pids}[0]);

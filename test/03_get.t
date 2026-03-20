@@ -53,7 +53,7 @@ TODO: {
             . "Accept: */*\r\n"
             . "Connection: keep-alive\r\n"
             . "\r\n",
-            nresponses => 1,
+            timeout => 2, nresponses => 1,
         );
         like($resp, qr/HTTP\/1\.[01] 200/, 'GET-001: single GET returns 200');
     }
@@ -71,7 +71,7 @@ TODO: {
             . "Cache-Control: no-cache\r\n"
             . "Connection: keep-alive\r\n"
             . "\r\n",
-            nresponses => 1,
+            timeout => 2, nresponses => 1,
         );
         like($resp, qr/HTTP\/1\.[01] 200/,
             'GET-002: GET with standard headers returns 200');
@@ -92,7 +92,7 @@ TODO: {
             . "Connection: keep-alive\r\n"
             . "\r\n"
             . "testecho123",
-            nresponses => 1,
+            timeout => 2, nresponses => 1,
         );
         like($resp, qr/testecho123/,
             'GET-003: upstream echo body forwarded to client');
@@ -112,7 +112,7 @@ TODO: {
                 . "Accept: */*\r\n"
                 . "Connection: keep-alive\r\n"
                 . "\r\n",
-                nresponses => 1,
+                timeout => 2, nresponses => 1,
             );
             if (!defined $resp || $resp !~ /HTTP\/1\.[01] 200/) {
                 $all_ok = 0;

@@ -70,7 +70,7 @@ $t->waitforsocket("127.0.0.1:$upstream_port");
         . "\r\n",
     );
 
-    my $resp = $t1->http_end($s, timeout => 10, nresponses => 2);
+    my $resp = $t1->http_end($s, timeout => 2, nresponses => 2);
     my @matches = defined $resp ? ($resp =~ /HTTP\/1\.[01] \d+/g) : ();
     TODO: {
         local $TODO = "BUG: client read handler not re-enabled after response sent";
@@ -93,7 +93,7 @@ $t->waitforsocket("127.0.0.1:$upstream_port");
     die "KA-002 SETUP: nginx failed to start"
         unless $t2->waitforsocket("127.0.0.1:$lp2", 5);
 
-    my $ua = $t2->ua(timeout => 5, keep_alive => 0);
+    my $ua = $t2->ua(timeout => 2, keep_alive => 0);
     my $url = $t2->base_url($lp2);
 
     # First request
@@ -149,7 +149,7 @@ $t->waitforsocket("127.0.0.1:$upstream_port");
             . "Connection: close\r\n"
             . "\r\n"
             . "test",
-            port => $lp3, timeout => 5, nresponses => 1,
+            port => $lp3, timeout => 2, nresponses => 1,
         );
 
         my $alive = kill(0, $t3->{pids}[0]);

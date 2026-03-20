@@ -212,12 +212,12 @@ sub stop {
         kill SIGQUIT, $pid;
     }
 
-    # Give processes up to 3s to exit
-    my $deadline = time() + 3;
+    # Give processes up to 1s to exit
+    my $deadline = time() + 1;
     for my $pid (@{$self->{pids}}) {
         while (time() < $deadline) {
             last if waitpid($pid, WNOHANG) != 0;
-            sleep 0.05;
+            sleep 0.01;
         }
         kill SIGKILL, $pid;
         waitpid($pid, 0);
@@ -226,7 +226,7 @@ sub stop {
 
     for my $pid (@{$self->{daemons}}) {
         kill SIGTERM, $pid;
-        sleep 0.05;
+        sleep 0.01;
         kill SIGKILL, $pid;
         waitpid($pid, WNOHANG);
     }
@@ -305,7 +305,7 @@ sub _http_read {
     while (time() < $deadline) {
         my $remaining = $deadline - time();
         last if $remaining <= 0;
-        my @ready = $sel->can_read($remaining < 0.5 ? $remaining : 0.5);
+        my @ready = $sel->can_read($remaining < 0.1 ? $remaining : 0.1);
         if (@ready) {
             my $buf;
             my $n = $s->sysread($buf, 65536);
@@ -396,7 +396,7 @@ sub waitforsocket {
             $s->close;
             return 1;
         }
-        sleep 0.1;
+        sleep 0.01;
     }
     return 0;
 }
@@ -417,7 +417,7 @@ sub waitforportclose {
             return 1;
         }
         $s->close;
-        sleep 0.1;
+        sleep 0.01;
     }
     return 0;
 }

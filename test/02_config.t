@@ -149,7 +149,7 @@ CONF
         # Original test doesn't check responses - just sends requests
         # Keeping original behavior to match test expectations
         for (1..4) {
-            $t5->http_get('/', port => $listen_ports[4]);
+            $t5->http_get('/', port => $listen_ports[4], timeout => 1);
         }
         $got_traffic = 1;  # If we got here without errors, traffic flowed
     }
@@ -186,7 +186,7 @@ CONF
     my $failed;
     eval {
         local $SIG{ALRM} = sub { die "alarm\n" };
-        alarm 5;
+        alarm 2;
         $failed = $t6->run_expect_fail();
         alarm 0;
     };
@@ -215,7 +215,7 @@ TODO: {
 
     my $resp = $t7->http(
         "POST / HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 4\r\nConnection: close\r\n\r\ntest",
-        port => $listen_ports[6], timeout => 5,
+        port => $listen_ports[6], timeout => 2,
     );
     my $ok = defined $resp && $resp =~ m{HTTP/1\.[01] 200};
     ok($ok, 'CFG-007: keep_alive 0 - server starts and handles requests');
@@ -248,7 +248,7 @@ CONF
     my $failed;
     eval {
         local $SIG{ALRM} = sub { die "alarm\n" };
-        alarm 5;
+        alarm 2;
         $failed = $t8->run_expect_fail();
         alarm 0;
     };
@@ -286,7 +286,7 @@ CONF
     my $failed;
     eval {
         local $SIG{ALRM} = sub { die "alarm\n" };
-        alarm 5;
+        alarm 2;
         $failed = $t9->run_expect_fail();
         alarm 0;
     };

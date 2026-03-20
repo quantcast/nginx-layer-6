@@ -54,7 +54,7 @@ my $lp5 = $ports[9];  # POOL-005
         fail('POOL-001: nginx failed to start');
     } else {
         # Send 4 sequential requests using LWP
-        my $ua = LWP::UserAgent->new(timeout => 10, keep_alive => 1);
+        my $ua = LWP::UserAgent->new(timeout => 2, keep_alive => 1);
         my $all_ok = 1;
         for (1..4) {
             my $resp = $ua->get("http://127.0.0.1:$lp1/");
@@ -88,14 +88,14 @@ my $lp5 = $ports[9];  # POOL-005
         # Send 2 concurrent requests with connections=1 using LWP in forked children
         my $pid_a = fork();
         if ($pid_a == 0) {
-            my $child_ua = LWP::UserAgent->new(timeout => 5, keep_alive => 1);
+            my $child_ua = LWP::UserAgent->new(timeout => 2, keep_alive => 1);
             my $r = $child_ua->get("http://127.0.0.1:$lp2/");
             exit($r->is_success ? 0 : 1);
         }
 
         my $pid_b = fork();
         if ($pid_b == 0) {
-            my $child_ua = LWP::UserAgent->new(timeout => 5, keep_alive => 1);
+            my $child_ua = LWP::UserAgent->new(timeout => 2, keep_alive => 1);
             my $r = $child_ua->get("http://127.0.0.1:$lp2/");
             exit($r->is_success ? 0 : 1);
         }
@@ -133,7 +133,7 @@ my $lp5 = $ports[9];  # POOL-005
         fail('POOL-003: nginx failed to start');
     } else {
         # Establish connection using LWP
-        my $ua = LWP::UserAgent->new(timeout => 10, keep_alive => 1);
+        my $ua = LWP::UserAgent->new(timeout => 2, keep_alive => 1);
         $ua->get("http://127.0.0.1:$lp3/");
 
         # Kill the upstream and wait for it to exit
@@ -143,7 +143,7 @@ my $lp5 = $ports[9];  # POOL-005
         # Send another request (should fail but not crash nginx)
         eval {
             local $SIG{ALRM} = sub { die "timeout\n" };
-            alarm(3);
+            alarm(2);
             $ua->get("http://127.0.0.1:$lp3/");
             alarm(0);
         };
@@ -169,7 +169,7 @@ my $lp5 = $ports[9];  # POOL-005
         fail('POOL-004: nginx failed to start');
     } else {
         # Verify initial connectivity using LWP
-        my $ua = LWP::UserAgent->new(timeout => 10, keep_alive => 1);
+        my $ua = LWP::UserAgent->new(timeout => 2, keep_alive => 1);
         $ua->get("http://127.0.0.1:$lp4/");
 
         # Kill upstream and wait for full exit + port release
@@ -222,7 +222,7 @@ my $lp5 = $ports[9];  # POOL-005
         for my $i (1..90) {
             my $pid = fork();
             if ($pid == 0) {
-                my $child_ua = LWP::UserAgent->new(timeout => 10, keep_alive => 1);
+                my $child_ua = LWP::UserAgent->new(timeout => 3, keep_alive => 1);
                 my $r = $child_ua->get("http://127.0.0.1:$lp5/");
                 exit($r->is_success ? 0 : 1);
             }

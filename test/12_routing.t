@@ -211,7 +211,7 @@ sub read_http_response {
     while (time() < $read_deadline) {
         my $left = $read_deadline - time();
         last if $left <= 0;
-        my @ready = $sel->can_read($left < 0.5 ? $left : 0.5);
+        my @ready = $sel->can_read($left < 0.1 ? $left : 0.1);
         if (@ready) {
             my $buf;
             my $n = $socket->sysread($buf, 65536);

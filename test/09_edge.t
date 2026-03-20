@@ -33,7 +33,7 @@ die "nginx failed to start on port $listen_port"
     unless $t->waitforsocket("127.0.0.1:$listen_port", 5);
 
 my $url = $t->base_url($listen_port);
-my $ua = $t->ua(timeout => 10);
+my $ua = $t->ua(timeout => 2);
 
 ###############################################################################
 # EDGE-001: Very long URI (8000 bytes)
@@ -103,7 +103,7 @@ my $ua = $t->ua(timeout => 10);
         "GET / HTTP/1.1\r\n"
         . "Connection: keep-alive\r\n"
         . "\r\n",
-        timeout => 5,
+        timeout => 2,
     );
     my $alive = kill(0, $t->{pids}[0]);
     ok($alive, 'EDGE-005: request with no Host header - nginx survives');
@@ -118,7 +118,7 @@ my $ua = $t->ua(timeout => 10);
     # Related to connection pool management or timing issue with POST body handling
     TODO: {
         local $TODO = 'POST returns 503 inactive upstream (C bug)';
-        my $ua_fresh = $t->ua(timeout => 10, keep_alive => 0);
+        my $ua_fresh = $t->ua(timeout => 2, keep_alive => 0);
         my $body = 'S' x 1500;
         my $resp = $ua_fresh->post("$url/", Content => $body, 'Content-Type' => 'application/x-www-form-urlencoded');
         ok($resp->is_success, 'EDGE-006: POST body exactly 1500 bytes (SLAB boundary) - 200 response');
@@ -132,7 +132,7 @@ my $ua = $t->ua(timeout => 10);
 {
     TODO: {
         local $TODO = 'POST returns 503 inactive upstream (C bug)';
-        my $ua_fresh = $t->ua(timeout => 10, keep_alive => 0);
+        my $ua_fresh = $t->ua(timeout => 2, keep_alive => 0);
         my $body = 'T' x 1499;
         my $resp = $ua_fresh->post("$url/", Content => $body, 'Content-Type' => 'application/x-www-form-urlencoded');
         ok($resp->is_success, 'EDGE-007: POST body exactly 1499 bytes - 200 response');
@@ -146,7 +146,7 @@ my $ua = $t->ua(timeout => 10);
 {
     TODO: {
         local $TODO = 'POST returns 503 inactive upstream (C bug)';
-        my $ua_fresh = $t->ua(timeout => 10, keep_alive => 0);
+        my $ua_fresh = $t->ua(timeout => 2, keep_alive => 0);
         my $body = 'U' x 1501;
         my $resp = $ua_fresh->post("$url/", Content => $body, 'Content-Type' => 'application/x-www-form-urlencoded');
         ok($resp->is_success, 'EDGE-008: POST body exactly 1501 bytes (crosses SLAB boundary) - 200 response');

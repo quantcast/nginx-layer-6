@@ -78,7 +78,7 @@ sub count_responses {
 ###############################################################################
 
 {
-    my $resp = $t->http(build_pipelined_gets(3), timeout => 5, nresponses => 3);
+    my $resp = $t->http(build_pipelined_gets(3), timeout => 2, nresponses => 3);
     my $count = count_responses($resp);
   TODO: {
         local $TODO = 'BUG-PIPE-001: GET pipelines return N-1 responses';
@@ -91,7 +91,7 @@ sub count_responses {
 ###############################################################################
 
 {
-    my $resp = $t->http(build_pipelined_gets(10), timeout => 10, nresponses => 10);
+    my $resp = $t->http(build_pipelined_gets(10), timeout => 2, nresponses => 10);
     my $count = count_responses($resp);
   TODO: {
         local $TODO = 'BUG-PIPE-001: GET pipelines return N-1 or 0 responses';
@@ -104,7 +104,7 @@ sub count_responses {
 ###############################################################################
 
 {
-    my $resp = $t->http(build_pipelined_gets(100), timeout => 30, nresponses => 100);
+    my $resp = $t->http(build_pipelined_gets(100), timeout => 2, nresponses => 100);
     my $count = count_responses($resp);
   TODO: {
         local $TODO = 'BUG-PIPE-001: GET pipelines return N-1 or 0 responses';
@@ -117,7 +117,7 @@ sub count_responses {
 ###############################################################################
 
 {
-    my $resp = $t->http(build_pipelined_gets(1000), timeout => 10, nresponses => 1000);
+    my $resp = $t->http(build_pipelined_gets(1000), timeout => 2, nresponses => 1000);
     my $count = count_responses($resp);
   TODO: {
         local $TODO = 'BUG-PIPE-001: GET pipelines return N-1 or 0 responses';
@@ -130,7 +130,7 @@ sub count_responses {
 ###############################################################################
 
 {
-    my $resp = $t->http(build_pipelined_posts(3), timeout => 5, nresponses => 3);
+    my $resp = $t->http(build_pipelined_posts(3), timeout => 2, nresponses => 3);
     my $count = count_responses($resp);
   TODO: {
         local $TODO = 'BUG-PIPE-001: POST pipelines also affected';
@@ -143,7 +143,7 @@ sub count_responses {
 ###############################################################################
 
 {
-    my $resp = $t->http(build_pipelined_posts(10), timeout => 5, nresponses => 10);
+    my $resp = $t->http(build_pipelined_posts(10), timeout => 2, nresponses => 10);
     my $count = count_responses($resp);
   TODO: {
         local $TODO = 'BUG-PIPE-001: POST pipelines also affected';
@@ -178,7 +178,7 @@ sub count_responses {
             . "Connection: keep-alive\r\n"
             . "\r\n";
 
-    my $resp = $t->http($req, timeout => 5, nresponses => 3);
+    my $resp = $t->http($req, timeout => 2, nresponses => 3);
     my $count = count_responses($resp);
     my $has_body = defined $resp && $resp =~ /mixedtest/;
   TODO: {
@@ -213,7 +213,7 @@ sub count_responses {
         . "\r\n",
     );
 
-    my $resp = $t->http_end($s, timeout => 5, nresponses => 2);
+    my $resp = $t->http_end($s, timeout => 2, nresponses => 2);
     my $count = count_responses($resp);
   TODO: {
         local $TODO = 'BUG-PIPE-001: Delayed pipelines also affected';
